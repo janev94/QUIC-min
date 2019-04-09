@@ -43,14 +43,18 @@ def forgePayload():
     packet = packet[28:] # paylaod with computed hash
     
     #TODO: Remove
-    packet = alterhash(packet)
+    #packet = alterhash(packet)
 
 
     payload = [int(packet[x:x+2], 16) for x in range(0, len(packet), 2)]
     return bytearray(payload)
 
 def alterhash(packet):
-    packet = packet[0] + '8' + packet[1:]
+    print 'toAlter'
+    print packet[24:]
+
+    #packet = packet[0] + '8' + packet[1:]
+    packet = ''.join('0' for _ in range(24)) + packet[24:]
     return packet
 
 def forgeP():
@@ -92,6 +96,11 @@ def gen_client_hello_data(tags = {}):
     payload = stream_id + MSG_TAG + tags_num + PAD + content
     return bytearray(payload)
 
+# Every four bytes in the hex_str represent a version 
+def decode_versions(hex_str):
+    #TODO: Add support for non-gQUIC versions
+    versions = [binascii.unhexlify(hex_str[i: i+8]) for i in range(0, len(hex_str), 8)]
+    return versions
 
 def main(dest_name=''):
     # addr = 216.58.207.35
@@ -127,7 +136,7 @@ def main(dest_name=''):
     # 216.58.207.35 - google
     # 104.89.124.214 - akamai
 
-    ip = '104.89.124.214'    
+    ip = '216.58.207.35'    
 
     dest_addr = ip #socket.gethostbyname(dest_name)
     port = 443
@@ -146,6 +155,9 @@ def main(dest_name=''):
     
     send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
 
+    vn_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
+    #vn_socket.bind(('', 443))
+
     # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
     # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         
@@ -154,6 +166,20 @@ def main(dest_name=''):
 
     send_socket.sendto(b_data, (dest_addr, port))
     
+    data = send_socket.recvfrom(1024)
+
+    #data = vn_socket.recvfrom(1024)
+    print 'received from: %s' % data[1][0]
+
+    
+    hex_data = binascii.hexlify(data[0])
+
+    # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
+    versions = binascii.hexlify(data[0])[18:]
+    
+    versions_decoded = decode_versions(versions)
+    print 'versions %s ' % versions_decoded
+
     #Close Sockets
     send_socket.close()
 
