@@ -24,19 +24,34 @@ import binascii
 
 #
 def gen_public_flags(version=1, pub_reset=0, divers_nonce=0, con_id=1, multipath=0):
-    flags = '0b%s%s%s%s%s%s%s' % (0, multipath, '01', con_id, divers_nonce, pub_reset, version)
+    flags = '0b%s%s%s%s%s%s%s' % (0, multipath, '00', con_id, divers_nonce, pub_reset, version)
     return bytearray([int(flags, 2)])
 
 def gen_con_id():
     return bytearray([random.randint(0, 255) for _ in range(8)])
 
 def gen_version_bytes():
-    return bytearray([ord(x) for x in 'Q043'])
+    return bytearray([ord(x) for x in 'Z036'])
 
 def gen_packet_number():
-    return bytearray([0, 1])
+    return bytearray([1])
 
 ####################################
+
+def forgePayload():
+    packet = '09215e9f6ef049a3265130333601063b3da74b109f33599b33c4a001140543484c4f0d000000504144004c040000564552005004000043435300600400004d5350436404000050444d44680400004943534c6c0400004354494d740400004e4f4e50940400004d4944539804000053434c539c040000435343549c04000043464357a004000053464357a40400002d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d5130333601e8816092921ae87eed8086a21582916400000058353039580200005263ab5c00000000550939ab3748d6a8bb21dc9f7be9c970ad21850c66825c0da56fdc8fd7ac521c640000000100000000400000004000000000000000000000000000000000000000000000'
+    packet = packet[28:] # paylaod with computed hash
+    
+    #TODO: Remove
+    packet = alterhash(packet)
+
+
+    payload = [int(packet[x:x+2], 16) for x in range(0, len(packet), 2)]
+    return bytearray(payload)
+
+def alterhash(packet):
+    packet = packet[0] + '8' + packet[1:]
+    return packet
 
 def forgeP():
     content = []
@@ -58,6 +73,25 @@ def gen_stream_frame_hdr(has_fin=0, has_data_length=0, offset_length=0, stream_l
     flags = "1%s%s%s%s" % (has_fin, has_data_length, bin(offset_length)[2:].zfill(3), bin(stream_length)[2:].zfill(2))
     return bytearray([int(flags, 2)])
 
+# STREAM ID is always 1 (client hello)
+# MSG TAG is CHLO
+# Number of tags to be sent
+# two bytes of padding
+# A series of uint32 tags and uint32 end offsets, one for each tag-value pair
+# The value data, concatenated without padding.
+
+# Arguments:
+#   tags -> a dictonary of the key/value pairs to be sent
+def gen_client_hello_data(tags = {}):
+    stream_id = [1]
+    MSG_TAG = [ord(x) for x in "CHLO"]
+    tags_num = [len(tags)]
+    PAD = [0, 0]
+    content = []
+    
+    payload = stream_id + MSG_TAG + tags_num + PAD + content
+    return bytearray(payload)
+
 
 def main(dest_name=''):
     # addr = 216.58.207.35
@@ -70,11 +104,32 @@ def main(dest_name=''):
     packet_no = gen_packet_number()
 
     stream_hdr = gen_stream_frame_hdr()
+    
+    chlo_content = gen_client_hello_data()
 
-    payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, stream_hdr])
+
+    #msg_hash = 'dbc3650c9e27c693ca93d236'
+    #msg_hash = [int(msg_hash[i:i+2], 16) for i in range(0, len(msg_hash), 2)]
+    #msg_hash = bytearray(msg_hash)
+
+    #pad = bytearray([0 for _ in range(1054)])
+
+    forged_payload = forgePayload()    
+
+    payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
+
+    #msg_len = len(payload)
+    #to_add = (2222 - msg_len) / 2
+    #payload = payload.join(x for x in [bytearray([0]) for _ in range(to_add)] )
+
     print binascii.hexlify(payload)
 
-    dest_addr = '216.58.207.35' #socket.gethostbyname(dest_name)
+    # 216.58.207.35 - google
+    # 104.89.124.214 - akamai
+
+    ip = '104.89.124.214'    
+
+    dest_addr = ip #socket.gethostbyname(dest_name)
     port = 443
     max_hops = 30
     icmp = socket.getprotobyname('icmp')
