@@ -27,11 +27,14 @@ def gen_public_flags(version=1, pub_reset=0, divers_nonce=0, con_id=1, multipath
     flags = '0b%s%s%s%s%s%s%s' % (0, multipath, '00', con_id, divers_nonce, pub_reset, version)
     return bytearray([int(flags, 2)])
 
+
 def gen_con_id():
     return bytearray([random.randint(0, 255) for _ in range(8)])
 
+
 def gen_version_bytes():
     return bytearray([ord(x) for x in 'Z036'])
+
 
 def gen_packet_number():
     return bytearray([1])
@@ -48,6 +51,7 @@ def forgePayload():
 
     payload = [int(packet[x:x+2], 16) for x in range(0, len(packet), 2)]
     return bytearray(payload)
+
 
 def alterhash(packet):
     print 'toAlter'
@@ -67,6 +71,7 @@ def forgeP():
 
     sys.stdout.write(str(content))
     return bytearray(content)
+
 
 # MSB is always 1 to indicate this is STREAM frame
 # fin = 1 bit
@@ -96,11 +101,16 @@ def gen_client_hello_data(tags = {}):
     payload = stream_id + MSG_TAG + tags_num + PAD + content
     return bytearray(payload)
 
+
 # Every four bytes in the hex_str represent a version 
 def decode_versions(hex_str):
     #TODO: Add support for non-gQUIC versions
     versions = [binascii.unhexlify(hex_str[i: i+8]) for i in range(0, len(hex_str), 8)]
     return versions
+
+
+verbose = False
+
 
 def main(dest_name=''):
     # addr = 216.58.207.35
@@ -176,7 +186,7 @@ def main(dest_name=''):
 
     # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
     versions = binascii.hexlify(data[0])[18:]
-    
+
     versions_decoded = decode_versions(versions)
     print 'versions %s ' % versions_decoded
 
