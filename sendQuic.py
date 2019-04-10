@@ -3,6 +3,7 @@ import struct
 import sys
 import random
 import binascii
+import sys
 
 #196e1da8b829ef3004513034330001b6229b973a57f818c50a04fc800143484c4f09000000504144008b030000534e490098030000564552009c03000043435300ac03000050444d44b00300004943534cb40300004d494453b803000043464357bc03000053464357c0030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007777772e676f6f676c652e64650000000001e8816092921ae87eed8086a215829158353039050000006400000000c0000000800000
 
@@ -126,29 +127,26 @@ def main(dest_name=''):
     
     chlo_content = gen_client_hello_data()
 
-
-    #msg_hash = 'dbc3650c9e27c693ca93d236'
-    #msg_hash = [int(msg_hash[i:i+2], 16) for i in range(0, len(msg_hash), 2)]
-    #msg_hash = bytearray(msg_hash)
-
-    #pad = bytearray([0 for _ in range(1054)])
-
     forged_payload = forgePayload()    
 
     payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
 
-    #msg_len = len(payload)
-    #to_add = (2222 - msg_len) / 2
-    #payload = payload.join(x for x in [bytearray([0]) for _ in range(to_add)] )
-
-    print binascii.hexlify(payload)
+    if verbose:
+        print 'Pyauload:',
+        print binascii.hexlify(payload)
 
     # 216.58.207.35 - google
     # 104.89.124.214 - akamai
 
     ip = '216.58.207.35'    
 
-    dest_addr = ip #socket.gethostbyname(dest_name)
+    if dest_name:
+        # if working with domain names we need to use: socket.gethostbyname(dest_name)
+        
+        dest_addr =  dest_name if dest_name else ip
+
+    result = {'address': dest_addr}
+
     port = 443
     max_hops = 30
     icmp = socket.getprotobyname('icmp')
@@ -156,30 +154,30 @@ def main(dest_name=''):
     ttl = 1
     curr_addr = None
 
-    #sys.stdout.write( '\n' + str(forgeP()) + '\n' )
-    #exit(1)
     b_data = payload
 
-    # while not (curr_addr == dest_addr or ttl > max_hops):
-	#create sockets
-    
     send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
-
-    vn_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
-    #vn_socket.bind(('', 443))
 
     # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
     # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         
         
     # Set the receive timeout so we behave more like regular traceroute
+    send_socket.settimeout(0.4)
 
     send_socket.sendto(b_data, (dest_addr, port))
     
-    data = send_socket.recvfrom(1024)
+    try:
+        data = send_socket.recvfrom(1024)
+    except socket.timeout as e:
+        # We have timed out, server did not return any QUIC versions
+        result['error'] = 'timeout'
+        result['versions'] = []
+        print result
+        sys.exit(1)
 
-    #data = vn_socket.recvfrom(1024)
-    print 'received from: %s' % data[1][0]
+    if verbose:
+        print 'received from: %s' % data[1][0]
 
     
     hex_data = binascii.hexlify(data[0])
@@ -188,13 +186,16 @@ def main(dest_name=''):
     versions = binascii.hexlify(data[0])[18:]
 
     versions_decoded = decode_versions(versions)
-    print 'versions %s ' % versions_decoded
+    result['versions'] = versions_decoded
+    print result
 
     #Close Sockets
     send_socket.close()
 
-    print 'Done'
+    if verbose:
+        print 'Done'
 
 if __name__ == '__main__':
-    main()
+    dest_name = sys.argv[1] if sys.argv[1] else ''
+    main(dest_name)
 
