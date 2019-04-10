@@ -4,6 +4,7 @@ import sys
 import random
 import binascii
 import sys
+import json
 
 #196e1da8b829ef3004513034330001b6229b973a57f818c50a04fc800143484c4f09000000504144008b030000534e490098030000564552009c03000043435300ac03000050444d44b00300004943534cb40300004d494453b803000043464357bc03000053464357c0030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007777772e676f6f676c652e64650000000001e8816092921ae87eed8086a215829158353039050000006400000000c0000000800000
 
@@ -112,90 +113,98 @@ def decode_versions(hex_str):
 
 verbose = False
 
-def sendProbe(dest_name=''):
+def sendProbe(dest=''):
     # addr = 216.58.207.35
     # port = 443
     # SNI: google.com
 
-    flags = gen_public_flags()
-    con_id = gen_con_id()
-    ver = gen_version_bytes()
-    packet_no = gen_packet_number()
+    try:
+        flags = gen_public_flags()
+        con_id = gen_con_id()
+        ver = gen_version_bytes()
+        packet_no = gen_packet_number()
 
-    stream_hdr = gen_stream_frame_hdr()
-    
-    chlo_content = gen_client_hello_data()
-
-    forged_payload = forgePayload()    
-
-    payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
-
-    if verbose:
-        print 'Pyauload:',
-        print binascii.hexlify(payload)
-
-    # 216.58.207.35 - google
-    # 104.89.124.214 - akamai
-
-    ip = '216.58.207.35'    
-
-    #if dest_name:
-        # if working with domain names we need to use: socket.gethostbyname(dest_name)
+        stream_hdr = gen_stream_frame_hdr()
         
-    dest_addr =  dest_name if dest_name else ip
+        chlo_content = gen_client_hello_data()
 
-    result = {'address': dest_addr}
+        forged_payload = forgePayload()    
 
-    port = 443
-    max_hops = 30
-    icmp = socket.getprotobyname('icmp')
-    udp = socket.getprotobyname('udp')
-    ttl = 1
-    curr_addr = None
+        payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
 
-    b_data = payload
+        if verbose:
+            print 'Pyauload:',
+            print binascii.hexlify(payload)
 
-    send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
+        # 216.58.207.35 - google
+        # 104.89.124.214 - akamai
 
-    # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-    # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
-        
-        
-    # Set the receive timeout so we behave more like regular traceroute
-    send_socket.settimeout(.4)
+        ip = '216.58.207.35'    
 
-    timeouts = 0
-    recvd = False
-    while timeouts < 3 and not recvd:
-        send_socket.sendto(b_data, (dest_addr, port))
-        
-        try:
-            data = send_socket.recvfrom(1024)
-            recvd = True
-        except socket.timeout as e:
-            # We have timed out, server did not return any QUIC versions
+        #if dest:
+            # if working with domain names we need to use: socket.gethostbyname(dest)
+            
+        dest_addr =  dest if dest else ip
+
+        result = {'address': dest_addr}
+
+        port = 443
+        max_hops = 30
+        icmp = socket.getprotobyname('icmp')
+        udp = socket.getprotobyname('udp')
+        ttl = 1
+        curr_addr = None
+
+        b_data = payload
+
+        send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
+
+        # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+        # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
+            
+            
+        # Set the receive timeout so we behave more like regular traceroute
+        send_socket.settimeout(.4)
+
+        timeouts = 0
+        recvd = False
+        while timeouts < 3 and not recvd:
+            send_socket.sendto(b_data, (dest_addr, port))
+            
+            try:
+                data = send_socket.recvfrom(1024)
+                recvd = True
+            except socket.timeout as e:
+                # We have timed out, server did not return any QUIC versions
+                timeouts += 1
+
+        if recvd:
+            if verbose:
+                print 'received from: %s' % data[1][0]
+            
+            hex_data = binascii.hexlify(data[0])
+
+            # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
+            versions = binascii.hexlify(data[0])[18:]
+
+            versions_decoded = decode_versions(versions)
+            result['versions'] = versions_decoded
+        else:
             result['error'] = 'timeout'
             result['versions'] = []
-            print result
-            timeouts += 1
 
-    if verbose:
-        print 'received from: %s' % data[1][0]
-    
-    hex_data = binascii.hexlify(data[0])
+        with open('res/%s.res' % dest, 'w') as f:
+            f.write( json.dumps(result) + '\n')
 
-    # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
-    versions = binascii.hexlify(data[0])[18:]
+        #Close Sockets
+        send_socket.close()
 
-    versions_decoded = decode_versions(versions)
-    result['versions'] = versions_decoded
-    print result
+        if verbose:
+            print 'Done'
+    except Exception as e:
+        with open('errors/%s.err' % dest, 'w') as f:
+            f.write(repr(e) + '\n')
 
-    #Close Sockets
-    send_socket.close()
-
-    if verbose:
-        print 'Done'
 
 
 def main(dest_name=''):
@@ -206,7 +215,7 @@ def main(dest_name=''):
             if len(servers) > 100:
                 break
 
-    sys.stdout = open('probe_res', 'w')
+    #sys.stdout = open('probe_res', 'w')
     for server in servers:
         sendProbe(server)
 
