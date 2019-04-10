@@ -206,6 +206,57 @@ def sendProbe(dest=''):
             f.write(repr(e) + '\n')
 
 
+################################
+
+from datetime import datetime
+from multiprocessing.dummy import Pool
+from multiprocessing import Process
+
+def ipGenerator():
+    with open('servers_feb') as f:
+        for line in f:
+            yield line
+
+
+def execProbe(servers):
+    print "Starting at: ", str(datetime.now())
+    pool = Pool()
+
+    for i, _ in enumerate(pool.imap(sendProbe, servers), 1):
+        print '\r' + str(datetime.now()) + ' ' + str((float(i)/chunk_size)*100) + '% done',
+
+    pool.close()
+    pool.join()
+    print
+    print 'Done'
+
+
+num_proc = 4
+chunk_size = 250
+
+def parallel():
+    target = 1182952
+    num_proc = 32
+    global chunk_size
+    chunk_size = target / num_proc
+
+    procs = []
+    serverGenerator = ipGenerator()
+    for _ in range(num_proc):
+        servers = []
+        while(len(servers) < chunk_size):
+            servers += [serverGenerator.next()]
+        p = Process(target=execProbe, args=(servers,))
+        p.start()		
+        procs.append(p)
+
+    for p in procs:
+			p.join()
+		
+    print "exec'd %d processes" % num_proc
+
+
+#######################################
 
 def main(dest_name=''):
     servers = []
@@ -221,6 +272,9 @@ def main(dest_name=''):
 
 
 if __name__ == '__main__':
+    parallel()
+    sys.exit(1)
+
     if any('single' in x for x in sys.argv):
         sendProbe(sys.argv[1])
     else:
