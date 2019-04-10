@@ -112,8 +112,7 @@ def decode_versions(hex_str):
 
 verbose = False
 
-
-def main(dest_name=''):
+def sendProbe(dest_name=''):
     # addr = 216.58.207.35
     # port = 443
     # SNI: google.com
@@ -140,10 +139,10 @@ def main(dest_name=''):
 
     ip = '216.58.207.35'    
 
-    if dest_name:
+    #if dest_name:
         # if working with domain names we need to use: socket.gethostbyname(dest_name)
         
-        dest_addr =  dest_name if dest_name else ip
+    dest_addr =  dest_name if dest_name else ip
 
     result = {'address': dest_addr}
 
@@ -163,22 +162,25 @@ def main(dest_name=''):
         
         
     # Set the receive timeout so we behave more like regular traceroute
-    send_socket.settimeout(0.4)
+    send_socket.settimeout(.4)
 
-    send_socket.sendto(b_data, (dest_addr, port))
-    
-    try:
-        data = send_socket.recvfrom(1024)
-    except socket.timeout as e:
-        # We have timed out, server did not return any QUIC versions
-        result['error'] = 'timeout'
-        result['versions'] = []
-        print result
-        sys.exit(1)
+    timeouts = 0
+    recvd = False
+    while timeouts < 3 and not recvd:
+        send_socket.sendto(b_data, (dest_addr, port))
+        
+        try:
+            data = send_socket.recvfrom(1024)
+            recvd = True
+        except socket.timeout as e:
+            # We have timed out, server did not return any QUIC versions
+            result['error'] = 'timeout'
+            result['versions'] = []
+            print result
+            timeouts += 1
 
     if verbose:
         print 'received from: %s' % data[1][0]
-
     
     hex_data = binascii.hexlify(data[0])
 
@@ -195,7 +197,24 @@ def main(dest_name=''):
     if verbose:
         print 'Done'
 
+
+def main(dest_name=''):
+    servers = []
+    with open('servers_feb') as f:
+        for line in f:
+            servers.append(line.strip())
+            if len(servers) > 100:
+                break
+
+    sys.stdout = open('probe_res', 'w')
+    for server in servers:
+        sendProbe(server)
+
+
 if __name__ == '__main__':
-    dest_name = sys.argv[1] if sys.argv[1] else ''
-    main(dest_name)
+    if any('single' in x for x in sys.argv):
+        sendProbe(sys.argv[1])
+    else:
+        dest_name = sys.argv[1] if len(sys.argv) > 1 else ''
+        main(dest_name)
 
