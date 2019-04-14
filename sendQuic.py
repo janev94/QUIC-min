@@ -222,10 +222,6 @@ from multiprocessing import Process
 
 def ipGenerator():
     with open(probe_root + '/servers_feb') as f:
-        print 'PROBE_ROOT: %s' % probe_root
-        print 'success'
-        import sys
-        sys.exit(1)
         for line in f:
             yield line.strip()
 
