@@ -2,7 +2,7 @@ import os
 
 root = os.environ('COMBINER_ROOT', '.')
 
-with open(root + '/combined_str', 'a+') as sink:
+with open(root + '/combined', 'a+') as sink:
 	dir_list = os.listdir(root + '/res')
 	fraction = int(len(dir_list) / 10)
 	print fraction	
