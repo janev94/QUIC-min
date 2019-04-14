@@ -1,6 +1,6 @@
 import os
 
-root = os.environ('COMBINER_ROOT', '.')
+root = os.environ.get('COMBINER_ROOT', '.')
 
 with open(root + '/combined', 'a+') as sink:
 	dir_list = os.listdir(root + '/res')
@@ -14,7 +14,7 @@ with open(root + '/combined', 'a+') as sink:
 		if len(batch_write) % fraction == 0:
 			sink.write(batch_write)
 			batch_write = ''
-			print '%d%% written' % count
+			print '%d%% written' % count * 10
 			count += 1
 	if batch_write:
 		sink.write(batch_write)
