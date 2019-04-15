@@ -199,7 +199,7 @@ def sendProbe(dest=''):
             result['versions'] = []
 
         with open(probe_root + '/res/%s.res' % dest, 'w') as f:
-           f.write( repr(result) + '\n')
+            f.write( repr(result) + '\n')
 
         if verbose:
             print repr(result)

@@ -15,8 +15,7 @@ with open(root + 'combined', 'a+') as sink:
 		if written % fraction == 0:
 			sink.write(''.join(batch_write))
 			batch_write = []
-			print '%d%% written' % (len(dir)list / written 
-* 100)
+			print '%d%% written' % (len(dir_list) / written * 10)
 	if batch_write:
 		sink.write(''.join(batch_write))
 
