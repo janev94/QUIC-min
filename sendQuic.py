@@ -210,11 +210,11 @@ def parallel_controlled(num_threads=20):
             ips.put(line.strip())
 
     #DEBUG
-    #min_ips = Queue.Queue()
-    #for _ in range(100):
-    #    min_ips.put(ips.get())
+    min_ips = Queue.Queue()
+    for _ in range(100):
+        min_ips.put(ips.get())
 
-    #ips = min_ips
+    ips = min_ips
     #DEBUG
 
     threads = []
@@ -290,7 +290,7 @@ def test_reachability(dest):
     b_data = payload
 
     try:
-        send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
+        send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     except Exception as e:
         print 'could not create socket'
         send_Q(ips, write_log)
