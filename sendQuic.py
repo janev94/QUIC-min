@@ -214,6 +214,7 @@ def sendProbe(dest=''):
            f.write(repr(e) + '\n')
 
 
+
 ################################
 
 from datetime import datetime
@@ -263,6 +264,163 @@ def parallel():
     print "exec'd %d processes" % num_proc
 
 
+
+from threading import Thread, Event
+import Queue
+
+def parallel_controlled(num_threads=20):
+    write_log = Queue.Queue()
+
+    ips = Queue.Queue()
+    with open(probe_root + '/servers_feb') as ip_list:
+        for line in ip_list:
+            ips.put(line.strip())
+
+    #DEBUG
+    #min_ips = Queue.Queue()
+    #for _ in range(100):
+    #    min_ips.put(ips.get())
+
+    #ips = min_ips
+    #DEBUG
+
+    threads = []
+    print ips.qsize()
+    for _ in range(num_threads):
+        t = Thread(target=send_Q, args=(ips, write_log))
+        t.start()
+        threads.append(t)
+
+    stopWriting = Event()
+    writer = Thread(target=logger, args=(write_log, stopWriting))
+    writer.start()
+
+    for t in threads:
+        t.join()
+    
+    #print 'setting stop'
+    stopWriting.set()
+    writer.join()
+    #print write_log.qsize()
+    #All Ips have been processed, trigger event
+
+def logger(write_log, stopWriting):
+    with open(probe_root + '/script_combined', 'w') as out_log:
+        has_items = True
+        while not stopWriting.isSet() or has_items:
+            try:
+                entry = write_log.get(timeout=10)
+                has_items = True
+                #print 'writing'
+                out_log.write(entry + '\n')
+            except Queue.Empty:
+                has_items = False
+            
+        print 'exiting now %s %s ' % (stopWriting.isSet(), has_items)
+
+
+
+def send_Q(ips, write_log):
+    dest = None
+    try:
+        while True:
+            try:
+                dest = ips.get_nowait()
+            except Queue.Empty:
+                # We cannot pull a new ip, all have been assigned
+                return
+            flags = gen_public_flags()
+            con_id = gen_con_id()
+            ver = gen_version_bytes()
+            packet_no = gen_packet_number()
+
+            stream_hdr = gen_stream_frame_hdr()
+            
+            chlo_content = gen_client_hello_data()
+
+            forged_payload = forgePayload()    
+
+            payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
+
+            if verbose:
+                print 'Pyauload:',
+                print binascii.hexlify(payload)
+
+            # 216.58.207.35 - google
+            # 104.89.124.214 - akamai
+
+            ip = '216.58.207.35'    
+
+            #if dest:
+                # if working with domain names we need to use: socket.gethostbyname(dest)
+                
+            dest_addr =  dest if dest else ip
+
+            result = {'address': dest_addr}
+
+            port = 443
+            max_hops = 30
+            icmp = socket.getprotobyname('icmp')
+            udp = socket.getprotobyname('udp')
+            ttl = 1
+            curr_addr = None
+
+            b_data = payload
+
+            try:
+                send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
+            except Exception as e:
+                print 'could not create socket'
+                send_Q(ips, write_log)
+                ips.put(dest)
+                return
+
+
+            # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+            # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
+                
+                
+            # Set the receive timeout so we behave more like regular traceroute
+            send_socket.settimeout(.4)
+
+            timeouts = 0
+            recvd = False
+            while timeouts < 3 and not recvd:
+                send_socket.sendto(b_data, (dest_addr, port))
+                
+                try:
+                    data = send_socket.recvfrom(1024)
+                    recvd = True
+                except socket.timeout as e:
+                    # We have timed out, server did not return any QUIC versions
+                    timeouts += 1
+
+            if recvd:
+                if verbose:
+                    print 'received from: %s' % data[1][0]
+                
+                hex_data = binascii.hexlify(data[0])
+
+                # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
+                versions = binascii.hexlify(data[0])[18:]
+
+                versions_decoded = decode_versions(versions)
+                result['versions'] = versions_decoded
+            else:
+                result['error'] = 'timeout'
+                result['versions'] = []
+
+            #Send result to be written
+            write_log.put(repr(result))
+            #print write_log.qsize()
+    except Exception as e:
+        # print type(e)
+        #Anything that we could not detect, save to a file so we can debug later and not crash the script
+        if not dest:
+            dest = 'generic'
+        with open(probe_root + '/errors_sec/%s.err' % dest.strip(), 'w') as f:
+            f.write(repr(e) + '\n')
+
 #######################################
 
 
@@ -283,7 +441,8 @@ def main(dest_name=''):
 if __name__ == '__main__':
     root = os.environ.get('PROBE_ROOT', '')
     probe_root = root if root else '.'
-    parallel()
+    # parallel()
+    parallel_controlled()
     sys.exit(1)
 
     if any('single' in x for x in sys.argv):
