@@ -124,79 +124,7 @@ def sendProbe(dest=''):
     # SNI: google.com
 
     try:
-        flags = gen_public_flags()
-        con_id = gen_con_id()
-        ver = gen_version_bytes()
-        packet_no = gen_packet_number()
-
-        stream_hdr = gen_stream_frame_hdr()
-        
-        chlo_content = gen_client_hello_data()
-
-        forged_payload = forgePayload()    
-
-        payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
-
-        if verbose:
-            print 'Pyauload:',
-            print binascii.hexlify(payload)
-
-        # 216.58.207.35 - google
-        # 104.89.124.214 - akamai
-
-        ip = '216.58.207.35'    
-
-        #if dest:
-            # if working with domain names we need to use: socket.gethostbyname(dest)
-            
-        dest_addr =  dest if dest else ip
-
-        result = {'address': dest_addr}
-
-        port = 443
-        max_hops = 30
-        icmp = socket.getprotobyname('icmp')
-        udp = socket.getprotobyname('udp')
-        ttl = 1
-        curr_addr = None
-
-        b_data = payload
-
-        send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
-
-        # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-        # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
-            
-            
-        # Set the receive timeout so we behave more like regular traceroute
-        send_socket.settimeout(.4)
-
-        timeouts = 0
-        recvd = False
-        while timeouts < 3 and not recvd:
-            send_socket.sendto(b_data, (dest_addr, port))
-            
-            try:
-                data = send_socket.recvfrom(1024)
-                recvd = True
-            except socket.timeout as e:
-                # We have timed out, server did not return any QUIC versions
-                timeouts += 1
-
-        if recvd:
-            if verbose:
-                print 'received from: %s' % data[1][0]
-            
-            hex_data = binascii.hexlify(data[0])
-
-            # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
-            versions = binascii.hexlify(data[0])[18:]
-
-            versions_decoded = decode_versions(versions)
-            result['versions'] = versions_decoded
-        else:
-            result['error'] = 'timeout'
-            result['versions'] = []
+        result = test_reachability(dest)
 
         with open(probe_root + '/res/%s.res' % dest, 'w') as f:
             f.write( repr(result) + '\n')
@@ -277,11 +205,11 @@ def parallel_controlled(num_threads=20):
             ips.put(line.strip())
 
     #DEBUG
-    #min_ips = Queue.Queue()
-    #for _ in range(100):
-    #    min_ips.put(ips.get())
+    min_ips = Queue.Queue()
+    for _ in range(100):
+        min_ips.put(ips.get())
 
-    #ips = min_ips
+    ips = min_ips
     #DEBUG
 
     threads = []
@@ -319,6 +247,89 @@ def logger(write_log, stopWriting):
         print 'exiting now %s %s ' % (stopWriting.isSet(), has_items)
 
 
+def test_reachability(dest):
+    flags = gen_public_flags()
+    con_id = gen_con_id()
+    ver = gen_version_bytes()
+    packet_no = gen_packet_number()
+
+    stream_hdr = gen_stream_frame_hdr()
+    
+    chlo_content = gen_client_hello_data()
+
+    forged_payload = forgePayload()    
+
+    payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
+
+    if verbose:
+        print 'Pyauload:',
+        print binascii.hexlify(payload)
+
+    # 216.58.207.35 - google
+    # 104.89.124.214 - akamai
+
+    ip = '216.58.207.35'    
+
+    #if dest:
+        # if working with domain names we need to use: socket.gethostbyname(dest)
+        
+    dest_addr =  dest if dest else ip
+
+    result = {'address': dest_addr}
+
+    port = 443
+    max_hops = 30
+    icmp = socket.getprotobyname('icmp')
+    udp = socket.getprotobyname('udp')
+    ttl = 1
+    curr_addr = None
+
+    b_data = payload
+
+    try:
+        send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
+    except Exception as e:
+        print 'could not create socket'
+        send_Q(ips, write_log)
+        ips.put(dest)
+        return
+
+
+    # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+    # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
+        
+        
+    # Set the receive timeout so we behave more like regular traceroute
+    send_socket.settimeout(.4)
+
+    timeouts = 0
+    recvd = False
+    while timeouts < 3 and not recvd:
+        send_socket.sendto(b_data, (dest_addr, port))
+        
+        try:
+            data = send_socket.recvfrom(1024)
+            recvd = True
+        except socket.timeout as e:
+            # We have timed out, server did not return any QUIC versions
+            timeouts += 1
+
+    if recvd:
+        if verbose:
+            print 'received from: %s' % data[1][0]
+        
+        hex_data = binascii.hexlify(data[0])
+
+        # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
+        versions = binascii.hexlify(data[0])[18:]
+
+        versions_decoded = decode_versions(versions)
+        result['versions'] = versions_decoded
+    else:
+        result['error'] = 'timeout'
+        result['versions'] = []
+
+    return result
 
 def send_Q(ips, write_log):
     dest = None
@@ -329,86 +340,8 @@ def send_Q(ips, write_log):
             except Queue.Empty:
                 # We cannot pull a new ip, all have been assigned
                 return
-            flags = gen_public_flags()
-            con_id = gen_con_id()
-            ver = gen_version_bytes()
-            packet_no = gen_packet_number()
-
-            stream_hdr = gen_stream_frame_hdr()
             
-            chlo_content = gen_client_hello_data()
-
-            forged_payload = forgePayload()    
-
-            payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
-
-            if verbose:
-                print 'Pyauload:',
-                print binascii.hexlify(payload)
-
-            # 216.58.207.35 - google
-            # 104.89.124.214 - akamai
-
-            ip = '216.58.207.35'    
-
-            #if dest:
-                # if working with domain names we need to use: socket.gethostbyname(dest)
-                
-            dest_addr =  dest if dest else ip
-
-            result = {'address': dest_addr}
-
-            port = 443
-            max_hops = 30
-            icmp = socket.getprotobyname('icmp')
-            udp = socket.getprotobyname('udp')
-            ttl = 1
-            curr_addr = None
-
-            b_data = payload
-
-            try:
-                send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, udp)
-            except Exception as e:
-                print 'could not create socket'
-                send_Q(ips, write_log)
-                ips.put(dest)
-                return
-
-
-            # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-            # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
-                
-                
-            # Set the receive timeout so we behave more like regular traceroute
-            send_socket.settimeout(.4)
-
-            timeouts = 0
-            recvd = False
-            while timeouts < 3 and not recvd:
-                send_socket.sendto(b_data, (dest_addr, port))
-                
-                try:
-                    data = send_socket.recvfrom(1024)
-                    recvd = True
-                except socket.timeout as e:
-                    # We have timed out, server did not return any QUIC versions
-                    timeouts += 1
-
-            if recvd:
-                if verbose:
-                    print 'received from: %s' % data[1][0]
-                
-                hex_data = binascii.hexlify(data[0])
-
-                # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
-                versions = binascii.hexlify(data[0])[18:]
-
-                versions_decoded = decode_versions(versions)
-                result['versions'] = versions_decoded
-            else:
-                result['error'] = 'timeout'
-                result['versions'] = []
+            result = test_reachability(dest)
 
             #Send result to be written
             write_log.put(repr(result))
