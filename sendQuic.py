@@ -137,14 +137,12 @@ def sendProbe(dest=''):
         if verbose:
             print repr(result)
 
-        #Close Sockets
-        send_socket.close()
-
         if verbose:
             print 'Done'
     except Exception as e:
-       with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
-           f.write(repr(e) + '\n')
+        raise e
+        with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
+            f.write(repr(e) + '\n')
 
 
 
@@ -267,7 +265,7 @@ def test_reachability(dest):
     payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
 
     if verbose:
-        print 'Pyauload:',
+        print 'Payload:',
         print binascii.hexlify(payload)
 
     # 216.58.207.35 - google
@@ -291,25 +289,49 @@ def test_reachability(dest):
 
     try:
         send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
     except Exception as e:
         print 'could not create socket'
+        raise e
         send_Q(ips, write_log)
         ips.put(dest)
         return
 
-
-    # send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-    # send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
+    
+    
+    send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         
-        
+    #send_socket.settimeout(.4)
+    send_socket.setblocking(0)    
     # Set the receive timeout so we behave more like regular traceroute
-    send_socket.settimeout(.4)
+    #recv_socket.settimeout(.4)
+    recv_socket.setblocking(0)
+    recv_socket.bind(("", 443))
 
     timeouts = 0
     recvd = False
     while timeouts < 3 and not recvd:
-        send_socket.sendto(b_data, (dest_addr, port))
-        
+
+    
+        while ttl < 20:
+            send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+            send_socket.sendto(b_data, (dest_addr, port))
+            
+            import select
+            
+            readable, _, _ = select.select([send_socket, recv_socket], [], [], .4)
+
+            print "TTL: %d " % ttl,
+            print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
+            if send_socket in readable:
+                print 'reading UDP socket %s' % repr(parse_QUIC_response(send_socket))
+            if recv_socket in readable:
+                print 'reading ICMP socket %s' % repr(parse_ICMP_response(recv_socket))
+            if not readable:
+                print 'TO'
+            ttl += 1
+        sys.exit(2)        
+
         try:
             data = send_socket.recvfrom(1024)
             recvd = True
@@ -317,14 +339,50 @@ def test_reachability(dest):
             # We have timed out, server did not return any QUIC versions
             timeouts += 1
 
+
+    #Close Sockets
+    send_socket.close()
+
+    return result
+
+def parse_ICMP_response(sock):
+    try:
+        # Check recv'd data and keep receiving ICMPs until timeout or an answer for the sent one is received
+        recv_data, curr_addr = sock.recvfrom(512)
+
+        # Split the header and the data
+        icmp_hdr = recv_data[20:28]
+        icmp_pl = recv_data[28] + recv_data[29]
+        t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
+        ver, ecn = struct.unpack('BB', icmp_pl)
+#		sys.stdout.write("type: %s code: %s checksum: %s \n" % (t, code, checksum))
+        ecn = ecn & 0b00000011 # get the last two bits of ToS field to extract ECN
+        print ("ecn: %d " % ecn)
+        finished = True
+        curr_addr = curr_addr[0]
+        try:
+            curr_name = socket.gethostbyaddr(curr_addr)[0]
+        except socket.error:
+            curr_name = curr_addr
+    except IOError as e:
+        if(isinstance(e, socket.timeout)):
+            print ("* ")
+
+def parse_QUIC_response(sock):
+    data, addr = sock.recvfrom(1024)
+
+    result = {'address': addr}
+    #TODO: Refactor, recvd is legacy
+    recvd = True
+
     if recvd:
         if verbose:
-            print 'received from: %s' % data[1][0]
+            print 'received from: %s' % addr[0]
         
-        hex_data = binascii.hexlify(data[0])
+        hex_data = binascii.hexlify(data)
 
         # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
-        versions = binascii.hexlify(data[0])[18:]
+        versions = binascii.hexlify(data)[18:]
 
         versions_decoded = decode_versions(versions)
         result['versions'] = versions_decoded
@@ -333,6 +391,8 @@ def test_reachability(dest):
         result['versions'] = []
 
     return result
+
+
 
 def send_Q(ips, write_log):
     dest = None
@@ -372,11 +432,14 @@ def main(dest_name=''):
     for server in servers:
         sendProbe(server)
 
-
+verbose = True
 
 if __name__ == '__main__':
-    root = os.environ.get('PROBE_ROOT', '')
-    probe_root = root if root else '.'
+
+    probe_root = os.environ.get('PROBE_ROOT', '.')
+
+    sendProbe('216.58.207.35')
+    sys.exit(1)
     # parallel()
     parallel_controlled()
     sys.exit(1)
