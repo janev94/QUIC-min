@@ -235,6 +235,7 @@ def parallel_controlled(num_threads=20):
     #print write_log.qsize()
     #All Ips have been processed, trigger event
 
+
 def logger(write_log, stopWriting):
     with open(probe_root + '/script_combined', 'w') as out_log:
         has_items = True
@@ -296,8 +297,6 @@ def test_reachability(dest):
         send_Q(ips, write_log)
         ips.put(dest)
         return
-
-    
     
     send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         
@@ -309,53 +308,44 @@ def test_reachability(dest):
     recv_socket.bind(("", 443))
 
     timeouts = 0
-    recvd = False
-    while timeouts < 3 and not recvd:
+    dest_reached = False
+    while ttl < 20 and not dest_reached:
+        send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+        send_socket.sendto(b_data, (dest_addr, port))
+        
+        import select
+        
+        readable, _, _ = select.select([send_socket, recv_socket], [], [], .4)
 
-        dest_reached = False
-        while ttl < 20 and not dest_reached:
-            send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-            send_socket.sendto(b_data, (dest_addr, port))
-            
-            import select
-            
-            readable, _, _ = select.select([send_socket, recv_socket], [], [], .4)
-
-            print "TTL: %d " % ttl,
-          #  print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
-            
-            if readable:
-                if send_socket in readable:
-                    data, (addr, _) = send_socket.recvfrom(1024)
-                    print 'reading UDP socket %s %s %s' % (repr(parse_QUIC_response(data, addr)), addr, dest_addr)
-                if recv_socket in readable:
-                    data, (addr, _) = recv_socket.recvfrom(1024)
-                    print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr))
-                if addr == dest_addr:
-                    dest_reached = True
-                ttl += 1
-                timeouts = 0
-            else:
-                print 'TO ',
-                timeouts += 1
-                if timeouts == 3:
-                    ttl += 1
-                    print
-                    timeouts = 0
-        sys.exit(2)        
-
-        try:
-            data = send_socket.recvfrom(1024)
-            recvd = True
-        except socket.timeout as e:
-            # We have timed out, server did not return any QUIC versions
+        print "TTL: %d " % ttl,
+      #  print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
+        
+        if readable:
+            if send_socket in readable:
+                data, (addr, _) = send_socket.recvfrom(1024)
+                result = parse_QUIC_response(data, addr)
+                print 'reading UDP socket %s %s %s' % (result, addr, dest_addr)
+            if recv_socket in readable:
+                data, (addr, _) = recv_socket.recvfrom(1024)
+                print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr))
+            if addr == dest_addr:
+                dest_reached = True
+            ttl += 1
+            timeouts = 0
+        else:
+            print 'TO ',
             timeouts += 1
+            if timeouts == 3:
+                ttl += 1
+                print
+                timeouts = 0
 
 
     #Close Sockets
     send_socket.close()
 
     return result
+
 
 def parse_ICMP_response(recv_data, curr_addr):
     try:
@@ -376,6 +366,7 @@ def parse_ICMP_response(recv_data, curr_addr):
     except IOError as e:
         if(isinstance(e, socket.timeout)):
             print ("* ")
+
 
 def parse_QUIC_response(data, addr):
 
@@ -399,7 +390,6 @@ def parse_QUIC_response(data, addr):
         result['versions'] = []
 
     return result
-
 
 
 def send_Q(ips, write_log):
