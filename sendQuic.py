@@ -251,7 +251,7 @@ def logger(write_log, stopWriting):
         print 'exiting now %s %s ' % (stopWriting.isSet(), has_items)
 
 
-def test_reachability(dest):
+def generate_QUIC_packet():
     flags = gen_public_flags()
     con_id = gen_con_id()
     ver = gen_version_bytes()
@@ -263,7 +263,14 @@ def test_reachability(dest):
 
     forged_payload = forgePayload()    
 
-    payload = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
+    result = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
+
+    return result
+
+
+
+def test_reachability(dest):
+    payload = generate_QUIC_packet()    
 
     if verbose:
         print 'Payload:',
