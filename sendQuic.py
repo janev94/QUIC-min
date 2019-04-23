@@ -265,12 +265,14 @@ def generate_QUIC_packet():
 
     result = bytearray([]).join(x for x in [flags, con_id, ver, packet_no, forged_payload]) #, stream_hdr, chlo_content])
 
-    return result
+    return (result, con_id)
 
 
 
 def test_reachability(dest):
-    payload = generate_QUIC_packet()    
+    (payload, con_id) = generate_QUIC_packet()    
+
+    print "CON_ID %s" % binascii.hexlify(con_id)
 
     if verbose:
         print 'Payload:',
@@ -346,7 +348,7 @@ def test_reachability(dest):
                 ttl += 1
                 print
                 timeouts = 0
-
+        sys.exit(1)
 
     #Close Sockets
     send_socket.close()
@@ -357,7 +359,13 @@ def test_reachability(dest):
 def parse_ICMP_response(recv_data, curr_addr):
     try:
         # Split the header and the data
+        print 'ICMP DATA: %s' % binascii.hexlify(recv_data)
+
         icmp_hdr = recv_data[20:28]
+        
+        con_id = recv_data[57:65]
+        print 'conid as long: %d ' % struct.unpack('Q', con_id) 
+
         icmp_pl = recv_data[28] + recv_data[29]
         t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
         ver, ecn = struct.unpack('BB', icmp_pl)
