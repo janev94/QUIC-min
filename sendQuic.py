@@ -251,9 +251,9 @@ def logger(write_log, stopWriting):
         print 'exiting now %s %s ' % (stopWriting.isSet(), has_items)
 
 
-def generate_QUIC_packet():
+def generate_QUIC_packet(con_id = -1):
     flags = gen_public_flags()
-    con_id = gen_con_id()
+    con_id = gen_con_id() if con_id == -1 else con_id
     ver = gen_version_bytes()
     packet_no = gen_packet_number()
 
