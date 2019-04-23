@@ -333,9 +333,15 @@ def test_reachability(dest):
                     print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr))
                 if addr == dest_addr:
                     dest_reached = True
+                ttl += 1
+                timeouts = 0
             else:
-                print 'TO'
-            ttl += 1
+                print 'TO ',
+                timeouts += 1
+                if timeouts == 3:
+                    ttl += 1
+                    print
+                    timeouts = 0
         sys.exit(2)        
 
         try:
@@ -379,7 +385,7 @@ def parse_QUIC_response(data, addr):
 
     if recvd:
         if verbose:
-            print 'received from: %s' % addr[0]
+            print 'received from: %s' % addr
         
         hex_data = binascii.hexlify(data)
 
