@@ -312,8 +312,8 @@ def test_reachability(dest):
     recvd = False
     while timeouts < 3 and not recvd:
 
-    
-        while ttl < 20:
+        dest_reached = False
+        while ttl < 20 and not dest_reached:
             send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
             send_socket.sendto(b_data, (dest_addr, port))
             
@@ -322,12 +322,18 @@ def test_reachability(dest):
             readable, _, _ = select.select([send_socket, recv_socket], [], [], .4)
 
             print "TTL: %d " % ttl,
-            print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
-            if send_socket in readable:
-                print 'reading UDP socket %s' % repr(parse_QUIC_response(send_socket))
-            if recv_socket in readable:
-                print 'reading ICMP socket %s' % repr(parse_ICMP_response(recv_socket))
-            if not readable:
+          #  print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
+            
+            if readable:
+                if send_socket in readable:
+                    data, (addr, _) = send_socket.recvfrom(1024)
+                    print 'reading UDP socket %s %s %s' % (repr(parse_QUIC_response(data, addr)), addr, dest_addr)
+                if recv_socket in readable:
+                    data, (addr, _) = recv_socket.recvfrom(1024)
+                    print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr))
+                if addr == dest_addr:
+                    dest_reached = True
+            else:
                 print 'TO'
             ttl += 1
         sys.exit(2)        
@@ -345,11 +351,8 @@ def test_reachability(dest):
 
     return result
 
-def parse_ICMP_response(sock):
+def parse_ICMP_response(recv_data, curr_addr):
     try:
-        # Check recv'd data and keep receiving ICMPs until timeout or an answer for the sent one is received
-        recv_data, curr_addr = sock.recvfrom(512)
-
         # Split the header and the data
         icmp_hdr = recv_data[20:28]
         icmp_pl = recv_data[28] + recv_data[29]
@@ -368,8 +371,7 @@ def parse_ICMP_response(sock):
         if(isinstance(e, socket.timeout)):
             print ("* ")
 
-def parse_QUIC_response(sock):
-    data, addr = sock.recvfrom(1024)
+def parse_QUIC_response(data, addr):
 
     result = {'address': addr}
     #TODO: Refactor, recvd is legacy
