@@ -294,9 +294,8 @@ def generate_QUIC_packet(con_id = -1):
 def test_reachability(dest):
     (payload, con_id_base) = generate_QUIC_packet()
 
-    con_id = con_id_base
-
-    print "CON_ID %s" % binascii.hexlify(con_id_base)
+    if verbose:
+        print "CON_ID %s" % binascii.hexlify(con_id_base)
     con_id_base = int(binascii.hexlify(con_id_base), 16)
 
     # con_id = con_id_base
@@ -356,27 +355,32 @@ def test_reachability(dest):
         
         readable, _, _ = select.select([send_socket, recv_socket], [], [], .4)
 
-        print "TTL: %d " % ttl,
+        if verbose:
+            print "TTL: %d " % ttl,
       #  print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
         
         if readable:
             if send_socket in readable:
                 data, (addr, _) = send_socket.recvfrom(1024)
                 result = parse_QUIC_response(data, addr)
-                print 'reading UDP socket %s %s %s' % (result, addr, dest_addr)
+                if verbose:
+                    print 'reading UDP socket %s %s %s' % (result, addr, dest_addr)
             if recv_socket in readable:
                 data, (addr, _) = recv_socket.recvfrom(1024)
-                print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr, con_id_base))
+                if verbose:
+                    print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr, con_id_base))
             if addr == dest_addr:
                 dest_reached = True
             ttl += 1
             timeouts = 0
         else:
-            print 'TO ',
+            if verbose:
+                print 'TO ',
             timeouts += 1
             if timeouts == 3:
                 ttl += 1
-                print
+                if verbose:
+                    print
                 timeouts = 0
 
         (b_data, _) = generate_QUIC_packet(con_id=con_id_base + ttl)
@@ -389,43 +393,50 @@ def test_reachability(dest):
 
     return result
 
-bad = 1
+NO_CON_ID = 1
 
 def parse_ICMP_response(recv_data, curr_addr, base_con_id):
-    try:
-        # Split the header and the data
+    # Split the header and the data
+    if verbose:
         print 'ICMP DATA: %s' % binascii.hexlify(recv_data)
+    
+    icmp_hdr = recv_data[20:28]
+    
+    if len(recv_data) > 56:
+        con_id = recv_data[57:65] # bytearray
         
-        icmp_hdr = recv_data[20:28]
-        
-        if len(recv_data) > 56:
-            con_id = recv_data[57:65] # bytearray
+        if verbose:
             print type(con_id)
             print binascii.hexlify(con_id)
-            #print int(binascii.hexlify(con_id), 16)
-            con_id = struct.unpack('!Q', con_id)[0] # long 
+        #print int(binascii.hexlify(con_id), 16)
+        
+        con_id = struct.unpack('!Q', con_id)[0] # long
+
+        if verbose:
             print 'conid as long: %d ' %  con_id
             print "extracted TTL: %d" % (con_id - base_con_id)
-        else:
-            global bad
-            print "BAD %d" % bad
-            bad += 1
+    else:
+        global NO_CON_ID
+        if verbose:
+            print "ICMP payload too short, cannot extract conn_id %d" % NO_CON_ID
+        NO_CON_ID += 1
 
-        icmp_pl = recv_data[28] + recv_data[29]
-        t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
-        ver, ecn = struct.unpack('BB', icmp_pl)
+    icmp_pl = recv_data[28] + recv_data[29]
+    t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
+    ver, ecn = struct.unpack('BB', icmp_pl)
 #		sys.stdout.write("type: %s code: %s checksum: %s \n" % (t, code, checksum))
-        ecn = ecn & 0b00000011 # get the last two bits of ToS field to extract ECN
+    ecn = ecn & 0b00000011 # get the last two bits of ToS field to extract ECN
+    
+    if verbose:
         print ("ecn: %d " % ecn)
-        finished = True
-        curr_addr = curr_addr[0]
-        try:
-            curr_name = socket.gethostbyaddr(curr_addr)[0]
-        except socket.error:
-            curr_name = curr_addr
-    except IOError as e:
-        if(isinstance(e, socket.timeout)):
-            print ("* ")
+
+    finished = True
+    curr_addr = curr_addr[0]
+
+    try:
+        curr_name = socket.gethostbyaddr(curr_addr)[0]
+    except socket.error:
+        curr_name = curr_addr
 
 
 def parse_QUIC_response(data, addr):
