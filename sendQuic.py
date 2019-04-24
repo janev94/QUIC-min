@@ -35,7 +35,21 @@ def gen_public_flags(version=1, pub_reset=0, divers_nonce=0, con_id=1, multipath
 
 
 def gen_con_id():
-    return bytearray([random.randint(0, 255) for _ in range(8)])
+    l = [random.randint(0, 255) for _ in range(8)]
+    # for x in l:
+    #     print x
+    #     print hex(x)
+
+    # res = bytearray(l)
+
+    # hex_res = binascii.hexlify(res)
+
+    # hex_ints = [int(hex_res[i: i+2], 16) for i in range(0, len(hex_res), 2)]
+
+    # print hex_ints
+    
+    # print bytearray(l) == bytearray(hex_ints)
+    return bytearray(l)
 
 
 def gen_version_bytes():
@@ -128,21 +142,21 @@ def sendProbe(dest=''):
     # port = 443
     # SNI: google.com
 
-    try:
-        result = test_reachability(dest)
+    # try:
+    result = test_reachability(dest)
 
-        with open(probe_root + '/res/%s.res' % dest, 'w') as f:
-            f.write( repr(result) + '\n')
+    with open(probe_root + '/res/%s.res' % dest, 'w') as f:
+        f.write( repr(result) + '\n')
 
-        if verbose:
-            print repr(result)
+    if verbose:
+        print repr(result)
 
-        if verbose:
-            print 'Done'
-    except Exception as e:
-        raise e
-        with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
-            f.write(repr(e) + '\n')
+    if verbose:
+        print 'Done'
+    # except Exception as e:
+    #     raise e
+    #     with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
+    #         f.write(repr(e) + '\n')
 
 
 
@@ -253,7 +267,15 @@ def logger(write_log, stopWriting):
 
 def generate_QUIC_packet(con_id = -1):
     flags = gen_public_flags()
-    con_id = gen_con_id() if con_id == -1 else con_id
+    if con_id == -1:
+        con_id = gen_con_id()
+    else:
+        con_id_hex = hex(con_id)[2:]
+        # Sometimes the con_id number is of type 'long'
+        if con_id_hex.endswith('L'):
+            con_id_hex = con_id_hex[:-1]
+        con_id = [int(con_id_hex[i: i+2], 16) for i in range(0, len(con_id_hex), 2)]
+        con_id = bytearray(con_id)
     ver = gen_version_bytes()
     packet_no = gen_packet_number()
 
@@ -270,9 +292,15 @@ def generate_QUIC_packet(con_id = -1):
 
 
 def test_reachability(dest):
-    (payload, con_id) = generate_QUIC_packet()    
+    (payload, con_id_base) = generate_QUIC_packet()
 
-    print "CON_ID %s" % binascii.hexlify(con_id)
+    con_id = con_id_base
+
+    print "CON_ID %s" % binascii.hexlify(con_id_base)
+    con_id_base = int(binascii.hexlify(con_id_base), 16)
+
+    # con_id = con_id_base
+    
 
     if verbose:
         print 'Payload:',
@@ -287,6 +315,8 @@ def test_reachability(dest):
         # if working with domain names we need to use: socket.gethostbyname(dest)
         
     dest_addr =  dest if dest else ip
+
+    dest_addr = '152.195.54.109'
 
     result = {'address': dest_addr}
 
@@ -336,7 +366,7 @@ def test_reachability(dest):
                 print 'reading UDP socket %s %s %s' % (result, addr, dest_addr)
             if recv_socket in readable:
                 data, (addr, _) = recv_socket.recvfrom(1024)
-                print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr))
+                print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr, con_id_base))
             if addr == dest_addr:
                 dest_reached = True
             ttl += 1
@@ -348,23 +378,38 @@ def test_reachability(dest):
                 ttl += 1
                 print
                 timeouts = 0
-        sys.exit(1)
+
+        (b_data, _) = generate_QUIC_packet(con_id=con_id_base + ttl)
+    
+    print 'exiting'
+    sys.exit(1)
 
     #Close Sockets
     send_socket.close()
 
     return result
 
+bad = 1
 
-def parse_ICMP_response(recv_data, curr_addr):
+def parse_ICMP_response(recv_data, curr_addr, base_con_id):
     try:
         # Split the header and the data
         print 'ICMP DATA: %s' % binascii.hexlify(recv_data)
-
+        
         icmp_hdr = recv_data[20:28]
         
-        con_id = recv_data[57:65]
-        print 'conid as long: %d ' % struct.unpack('Q', con_id) 
+        if len(recv_data) > 56:
+            con_id = recv_data[57:65] # bytearray
+            print type(con_id)
+            print binascii.hexlify(con_id)
+            #print int(binascii.hexlify(con_id), 16)
+            con_id = struct.unpack('!Q', con_id)[0] # long 
+            print 'conid as long: %d ' %  con_id
+            print "extracted TTL: %d" % (con_id - base_con_id)
+        else:
+            global bad
+            print "BAD %d" % bad
+            bad += 1
 
         icmp_pl = recv_data[28] + recv_data[29]
         t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
