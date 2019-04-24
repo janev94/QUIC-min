@@ -142,21 +142,21 @@ def sendProbe(dest=''):
     # port = 443
     # SNI: google.com
 
-    # try:
-    result = test_reachability(dest)
+    try:
+        result = test_reachability(dest)
 
-    with open(probe_root + '/res/%s.res' % dest, 'w') as f:
-        f.write( repr(result) + '\n')
+        with open(probe_root + '/res/%s.res' % dest, 'w') as f:
+            f.write( repr(result) + '\n')
 
-    if verbose:
-        print repr(result)
+        if verbose:
+            print repr(result)
 
-    if verbose:
-        print 'Done'
-    # except Exception as e:
-    #     raise e
-    #     with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
-    #         f.write(repr(e) + '\n')
+        if verbose:
+            print 'Done'
+    except Exception as e:
+        raise e
+        with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
+            f.write(repr(e) + '\n')
 
 
 
