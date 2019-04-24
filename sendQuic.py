@@ -315,8 +315,6 @@ def test_reachability(dest):
         
     dest_addr =  dest if dest else ip
 
-    dest_addr = '152.195.54.109'
-
     result = {'address': dest_addr}
 
     port = 443
