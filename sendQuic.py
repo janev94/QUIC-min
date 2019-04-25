@@ -5,6 +5,7 @@ import random
 import binascii
 import sys
 import os
+import pprint
 
 icmp = socket.getprotobyname('icmp')
 udp = socket.getprotobyname('udp')
@@ -145,7 +146,7 @@ def sendProbe(dest=''):
     # try:
     result = test_reachability(dest)
 
-    print 'reachability result: %s' % repr(result)
+    print 'reachability result: %s' % pprint.pprint(result)
     sys.exit(1)
 
     with open(probe_root + '/res/%s.res' % dest, 'w') as f:
@@ -412,7 +413,9 @@ def test_reachability(dest):
                     print
                 timeouts = 0
 
-        (b_data, _) = generate_QUIC_packet(con_id=con_id_base + ttl)
+        (b_data, pre_send_con_id) = generate_QUIC_packet(con_id=con_id_base + ttl)
+        if verbose:
+            print 'con_ID pre-send: %d' % int(binascii.hexlify(pre_send_con_id), 16)
     
     #Close Sockets
     udp_socket.close()
@@ -447,7 +450,6 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
         if verbose:
             print type(con_id)
             print binascii.hexlify(con_id)
-        #print int(binascii.hexlify(con_id), 16)
         
         con_id = struct.unpack('!Q', con_id)[0] # long
 
@@ -461,14 +463,7 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
             print "ICMP payload too short, cannot extract conn_id %d" % NO_CON_ID
         NO_CON_ID += 1
 
-    # curr_addr = curr_addr[0]
-
-    try:
-        curr_name = socket.gethostbyaddr(curr_addr)[0]
-    except socket.error:
-        curr_name = curr_addr
-
-    result = "%s (%s), ECN: %d" % (curr_name, curr_addr, ecn)
+    result = "%s, ECN: %d" % (curr_addr, ecn)
     if extracted_ttl:
         result += " Extracted TTL: %d" % extracted_ttl
 
