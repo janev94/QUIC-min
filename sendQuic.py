@@ -142,21 +142,24 @@ def sendProbe(dest=''):
     # port = 443
     # SNI: google.com
 
-    try:
-        result = test_reachability(dest)
+    # try:
+    result = test_reachability(dest)
 
-        with open(probe_root + '/res/%s.res' % dest, 'w') as f:
-            f.write( repr(result) + '\n')
+    print 'reachability result: %s' % repr(result)
+    sys.exit(1)
 
-        if verbose:
-            print repr(result)
+    with open(probe_root + '/res/%s.res' % dest, 'w') as f:
+        f.write( repr(result) + '\n')
 
-        if verbose:
-            print 'Done'
-    except Exception as e:
-        raise e
-        with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
-            f.write(repr(e) + '\n')
+    if verbose:
+        print repr(result)
+
+    if verbose:
+        print 'Done'
+    # except Exception as e:
+    #     raise e
+    #     with open(probe_root + '/errors/%s.err' % dest.strip(), 'w') as f:
+    #         f.write(repr(e) + '\n')
 
 
 
@@ -290,8 +293,18 @@ def generate_QUIC_packet(con_id = -1):
     return (result, con_id)
 
 
+# Probes server given by input parameter
+
 
 def test_reachability(dest):
+    """Probes server given as input
+    
+    Arguments:
+        dest  -- ip or Domain name of the server to be tested
+    
+    Returns:
+        result -- dict containing information about address, trace and supported versions, or error if probe timed out
+    """
     (payload, con_id_base) = generate_QUIC_packet()
 
     if verbose:
@@ -315,7 +328,8 @@ def test_reachability(dest):
         
     dest_addr =  dest if dest else ip
 
-    result = {'address': dest_addr}
+    trace = {}
+    result = {'address': dest_addr, 'trace': trace}
 
     port = 443
     max_hops = 30
@@ -325,8 +339,8 @@ def test_reachability(dest):
     b_data = payload
 
     try:
-        send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        recv_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
     except Exception as e:
         print 'could not create socket'
         raise e
@@ -334,39 +348,51 @@ def test_reachability(dest):
         ips.put(dest)
         return
     
-    send_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
+    udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         
     #send_socket.settimeout(.4)
-    send_socket.setblocking(0)    
+    udp_socket.setblocking(0)    
     # Set the receive timeout so we behave more like regular traceroute
     #recv_socket.settimeout(.4)
-    recv_socket.setblocking(0)
-    recv_socket.bind(("", 443))
+    icmp_socket.setblocking(0)
+    icmp_socket.bind(("", 443))
 
     timeouts = 0
     dest_reached = False
     while ttl < 20 and not dest_reached:
-        send_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
-        send_socket.sendto(b_data, (dest_addr, port))
+        udp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+        udp_socket.sendto(b_data, (dest_addr, port))
         
         import select
         
-        readable, _, _ = select.select([send_socket, recv_socket], [], [], .4)
+        readable, _, _ = select.select([udp_socket, icmp_socket], [], [], .4)
 
         if verbose:
             print "TTL: %d " % ttl,
       #  print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
         
         if readable:
-            if send_socket in readable:
-                data, (addr, _) = send_socket.recvfrom(1024)
-                result = parse_QUIC_response(data, addr)
+            if udp_socket in readable:
+                data, (addr, _) = udp_socket.recvfrom(1024)
+                
+                # Get a list of supported versions
+                parsed_quic = parse_QUIC_response(data)
+
                 if verbose:
-                    print 'reading UDP socket %s %s %s' % (result, addr, dest_addr)
-            if recv_socket in readable:
-                data, (addr, _) = recv_socket.recvfrom(1024)
+                    print 'read UDP socket %s %s %s' % (parsed_quic, addr, dest_addr)
+                result.update(parsed_quic)
+
+            if icmp_socket in readable:
+                data, (addr, _) = icmp_socket.recvfrom(1024)
+                
+                # Return extracted ECN
+                parsed_icmp = parse_ICMP_response(data, addr, con_id_base)
+                trace_record = result['trace'].get(ttl, '')
+                trace_record += parsed_icmp
+                result['trace'][ttl] = trace_record
                 if verbose:
-                    print 'reading ICMP socket %s' % repr(parse_ICMP_response(data, addr, con_id_base))
+                    print 'reading ICMP socket %s' % repr(parsed_icmp)
+
             if addr == dest_addr:
                 dest_reached = True
             ttl += 1
@@ -374,6 +400,11 @@ def test_reachability(dest):
         else:
             if verbose:
                 print 'TO ',
+            # Record timeout in trace    
+            ttl_record = result['trace'].get(ttl, '')
+            ttl_record += '* '
+
+            result['trace'][ttl] = ttl_record
             timeouts += 1
             if timeouts == 3:
                 ttl += 1
@@ -383,23 +414,33 @@ def test_reachability(dest):
 
         (b_data, _) = generate_QUIC_packet(con_id=con_id_base + ttl)
     
-    print 'exiting'
-    sys.exit(1)
-
     #Close Sockets
-    send_socket.close()
+    udp_socket.close()
 
     return result
 
 NO_CON_ID = 1
 
 def parse_ICMP_response(recv_data, curr_addr, base_con_id):
+    result = ""
+
     # Split the header and the data
     if verbose:
         print 'ICMP DATA: %s' % binascii.hexlify(recv_data)
     
     icmp_hdr = recv_data[20:28]
     
+    icmp_pl = recv_data[28] + recv_data[29]
+    t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
+    ver, ecn = struct.unpack('BB', icmp_pl)
+#		sys.stdout.write("type: %s code: %s checksum: %s \n" % (t, code, checksum))
+    ecn = ecn & 0b00000011 # get the last two bits of ToS field to extract ECN
+
+    if verbose:
+        print ("ecn: %d " % ecn)
+
+    # Check if we have enough of the original packet to extract TTL
+    extracted_ttl = None
     if len(recv_data) > 56:
         con_id = recv_data[57:65] # bytearray
         
@@ -410,6 +451,7 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
         
         con_id = struct.unpack('!Q', con_id)[0] # long
 
+        extracted_ttl = con_id - base_con_id
         if verbose:
             print 'conid as long: %d ' %  con_id
             print "extracted TTL: %d" % (con_id - base_con_id)
@@ -419,44 +461,32 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
             print "ICMP payload too short, cannot extract conn_id %d" % NO_CON_ID
         NO_CON_ID += 1
 
-    icmp_pl = recv_data[28] + recv_data[29]
-    t, code, checksum, _ = struct.unpack('bbHI', icmp_hdr)
-    ver, ecn = struct.unpack('BB', icmp_pl)
-#		sys.stdout.write("type: %s code: %s checksum: %s \n" % (t, code, checksum))
-    ecn = ecn & 0b00000011 # get the last two bits of ToS field to extract ECN
-    
-    if verbose:
-        print ("ecn: %d " % ecn)
-
-    finished = True
-    curr_addr = curr_addr[0]
+    # curr_addr = curr_addr[0]
 
     try:
         curr_name = socket.gethostbyaddr(curr_addr)[0]
     except socket.error:
         curr_name = curr_addr
 
+    result = "%s (%s), ECN: %d" % (curr_name, curr_addr, ecn)
+    if extracted_ttl:
+        result += " Extracted TTL: %d" % extracted_ttl
 
-def parse_QUIC_response(data, addr):
+    return result
 
-    result = {'address': addr}
-    #TODO: Refactor, recvd is legacy
-    recvd = True
 
-    if recvd:
-        if verbose:
-            print 'received from: %s' % addr
-        
-        hex_data = binascii.hexlify(data)
+def parse_QUIC_response(data):
 
-        # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
-        versions = binascii.hexlify(data)[18:]
+    result = {}
+    
+    # convert the bytestream to hex stream
+    hex_data = binascii.hexlify(data)
 
-        versions_decoded = decode_versions(versions)
-        result['versions'] = versions_decoded
-    else:
-        result['error'] = 'timeout'
-        result['versions'] = []
+    # skip first 9 bytes (1 byte public flags + 8 bytes connection ID)
+    versions = hex_data[18:]
+
+    versions_decoded = decode_versions(versions)
+    result['versions'] = versions_decoded
 
     return result
 
