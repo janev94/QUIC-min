@@ -230,9 +230,28 @@ def parallel_controlled(dispatch_state, num_threads=20):
         for line in ip_list:
             ips.put(line.strip())
 
+    # Create sockets for each TTL <-> port mapping
+
+    udp_sockets = []
+    base_port = 6030
+    for i in range(20):
+        try:
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            
+            try:
+                udp_socket.bind(('', base_port + i + 1))
+            except socket.error as e:
+                if e.errno == 98:
+                    # Handle case where port is taken
+                    print "Port %d is taken" % base_port + i + 1
+
+            udp_sockets.append(udp_socket)
+        except Exception as e:
+            print 'could not create socket series'
+
     #DEBUG
     min_ips = Queue.Queue()
-    for _ in range(20):
+    for _ in range(1):
         min_ips.put(ips.get())
 
     ips = min_ips
@@ -251,7 +270,7 @@ def parallel_controlled(dispatch_state, num_threads=20):
             ips.put(dest)
             return
 
-        t = Thread(target=send_Q, args=(ips, write_log, udp_socket, dispatch_state))
+        t = Thread(target=send_Q, args=(ips, write_log, udp_sockets, dispatch_state))
         t.start()
         threads.append(t)
 
@@ -311,14 +330,14 @@ def generate_QUIC_packet(con_id = -1):
 
 # Probes server given by input parameter
 
-timeout = 1
+timeout = .4
 
-def test_reachability(dest, udp_socket, icmp_socket, fds):
+def test_reachability(dest, udp_sockets, icmp_socket, fds):
     """Probes server given as input
     
     Arguments:
         dest  -- ip or Domain name of the server to be tested
-        udp_socket -- fd to use for sending/receiving QUIC packets
+        udp_socket -- fds to use for sending/receiving QUIC packets, based on TTL value
         icmp_socket -- fd to use for receiving ICMP packets
     Returns:
         result -- dict containing information about address, trace and supported versions, or error if probe timed out
@@ -353,7 +372,7 @@ def test_reachability(dest, udp_socket, icmp_socket, fds):
     result = {'address': dest_addr, 'trace': trace}
 
     port = 443
-    max_hops = 30
+    max_hops = 20
     ttl = 1
     curr_addr = None
 
@@ -362,6 +381,7 @@ def test_reachability(dest, udp_socket, icmp_socket, fds):
     timeouts = 0
     dest_reached = False
     while ttl < max_hops and not dest_reached:
+        udp_socket = udp_sockets[ttl-1]
         udp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
         udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         udp_socket.sendto(b_data, (dest_addr, port))
@@ -385,11 +405,14 @@ def test_reachability(dest, udp_socket, icmp_socket, fds):
 
             if icmp_socket._reader in readable:
                 data, (addr, _) = icmp_socket.get(block=False)
-                
+                port = struct.unpack('!H', data[48:50])[0] # bits 48 and 49 correspond to sender port number
+                print "port %d" % port
+                # sys.exit(1)
                 dst_ip_bytes = binascii.hexlify(data)[88:96]
                 dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
 
-                print 'Thread %s reading packet for %s' % (dest_addr, dst_ip)
+                if verbose:
+                    print 'Thread %s reading packet for %s' % (dest_addr, dst_ip)
 
                 # Return extracted ECN
                 parsed_icmp = parse_ICMP_response(data, addr, con_id_base)
@@ -438,6 +461,8 @@ NO_CON_ID = 1
 
 def parse_ICMP_response(recv_data, curr_addr, base_con_id):
     result = ""
+
+    print "RD %s" % type(recv_data)
 
     # Split the header and the data
     if verbose:
@@ -498,7 +523,7 @@ def parse_QUIC_response(data):
     return result
 
 
-def send_Q(ips, write_log, udp_socket, dispatch_state):
+def send_Q(ips, write_log, udp_sockets, dispatch_state):
     dest = None
 
     #Create a 'fake' socket to receive ICMP packets on
@@ -516,7 +541,7 @@ def send_Q(ips, write_log, udp_socket, dispatch_state):
 
             #TODO: Register current ip to 'icmp_socket' for dispatch state
 
-            result = test_reachability(dest, udp_socket, icmp_receiver, dispatch_state)
+            result = test_reachability(dest, udp_sockets, icmp_receiver, dispatch_state)
 
             if verbose:
                 print 'reachability result:'
