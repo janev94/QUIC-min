@@ -6,6 +6,9 @@ import binascii
 import sys
 import os
 import pprint
+import select
+import multiprocessing
+
 
 icmp = socket.getprotobyname('icmp')
 udp = socket.getprotobyname('udp')
@@ -138,15 +141,17 @@ fraction = int(target / 20)
 progress = 0
 percent = 0
 
-def sendProbe(dest=''):
+def sendProbe(udp_socket, icmp_socket, dest=''):
     # addr = 216.58.207.35
     # port = 443
     # SNI: google.com
 
     # try:
-    result = test_reachability(dest)
+    result = test_reachability(dest, udp_socket, icmp_socket)
 
-    print 'reachability result: %s' % pprint.pprint(result)
+    if verbose:
+        print 'reachability result:'
+        pprint.pprint(result)
     sys.exit(1)
 
     with open(probe_root + '/res/%s.res' % dest, 'w') as f:
@@ -236,7 +241,17 @@ def parallel_controlled(num_threads=20):
     threads = []
     print ips.qsize()
     for _ in range(num_threads):
-        t = Thread(target=send_Q, args=(ips, write_log))
+        try:
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
+        except Exception as e:
+            print 'could not create socket'
+            raise e
+            send_Q(ips, write_log)
+            ips.put(dest)
+            return
+
+        t = Thread(target=send_Q, args=(ips, write_log, udp_socket, icmp_socket))
         t.start()
         threads.append(t)
 
@@ -297,12 +312,13 @@ def generate_QUIC_packet(con_id = -1):
 # Probes server given by input parameter
 
 
-def test_reachability(dest):
+def test_reachability(dest, udp_socket, icmp_socket):
     """Probes server given as input
     
     Arguments:
         dest  -- ip or Domain name of the server to be tested
-    
+        udp_socket -- fd to use for sending/receiving QUIC packets
+        icmp_socket -- fd to use for receiving ICMP packets
     Returns:
         result -- dict containing information about address, trace and supported versions, or error if probe timed out
     """
@@ -339,34 +355,13 @@ def test_reachability(dest):
 
     b_data = payload
 
-    try:
-        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
-    except Exception as e:
-        print 'could not create socket'
-        raise e
-        send_Q(ips, write_log)
-        ips.put(dest)
-        return
-    
-    udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
-        
-    #send_socket.settimeout(.4)
-    udp_socket.setblocking(0)    
-    # Set the receive timeout so we behave more like regular traceroute
-    #recv_socket.settimeout(.4)
-    icmp_socket.setblocking(0)
-    icmp_socket.bind(("", 443))
-
     timeouts = 0
     dest_reached = False
     while ttl < 20 and not dest_reached:
         udp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
         udp_socket.sendto(b_data, (dest_addr, port))
         
-        import select
-        
-        readable, _, _ = select.select([udp_socket, icmp_socket], [], [], .4)
+        readable, _, _ = select.select([udp_socket, icmp_socket._reader], [], [], .4)
 
         if verbose:
             print "TTL: %d " % ttl,
@@ -383,8 +378,8 @@ def test_reachability(dest):
                     print 'read UDP socket %s %s %s' % (parsed_quic, addr, dest_addr)
                 result.update(parsed_quic)
 
-            if icmp_socket in readable:
-                data, (addr, _) = icmp_socket.recvfrom(1024)
+            if icmp_socket._reader in readable:
+                data, (addr, _) = icmp_socket.get(block=False)
                 
                 # Return extracted ECN
                 parsed_icmp = parse_ICMP_response(data, addr, con_id_base)
@@ -486,7 +481,7 @@ def parse_QUIC_response(data):
     return result
 
 
-def send_Q(ips, write_log):
+def send_Q(ips, write_log, udp_socket, icmp_socket):
     dest = None
     try:
         while True:
@@ -496,7 +491,7 @@ def send_Q(ips, write_log):
                 # We cannot pull a new ip, all have been assigned
                 return
             
-            result = test_reachability(dest)
+            result = test_reachability(dest, udp_socket, icmp_socket)
 
             #Send result to be written
             write_log.put(repr(result))
@@ -526,11 +521,34 @@ def main(dest_name=''):
 
 verbose = True
 
+def icmp_recvr(icmp_socket, fd):
+    while True:
+        readable, _, _ = select.select([icmp_socket], [], [], .4)
+        if readable:
+            icmp_data = icmp_socket.recvfrom(1024)
+            fd.put(icmp_data)
+            if verbose:
+                print 'read stuff'
+
 if __name__ == '__main__':
 
     probe_root = os.environ.get('PROBE_ROOT', '.')
 
-    sendProbe('216.58.207.35')
+    try:
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, icmp)
+    except Exception as e:
+        print 'could not create socket'
+        raise e
+        send_Q(ips, write_log)
+        ips.put(dest)
+
+    sudo_icmp = multiprocessing.Queue()
+    t = Thread(target=icmp_recvr, args=(icmp_socket, sudo_icmp))
+    t.setDaemon(True)
+    t.start()
+
+    sendProbe(udp_socket, sudo_icmp, dest='216.58.207.35')
     sys.exit(1)
     # parallel()
     parallel_controlled()
