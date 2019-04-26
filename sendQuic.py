@@ -222,7 +222,7 @@ def parallel():
 from threading import Thread, Event
 import Queue
 
-def parallel_controlled(num_threads=20):
+def parallel_controlled(dispatch_state, num_threads=20):
     write_log = Queue.Queue()
 
     ips = Queue.Queue()
@@ -232,7 +232,7 @@ def parallel_controlled(num_threads=20):
 
     #DEBUG
     min_ips = Queue.Queue()
-    for _ in range(100):
+    for _ in range(20):
         min_ips.put(ips.get())
 
     ips = min_ips
@@ -251,7 +251,7 @@ def parallel_controlled(num_threads=20):
             ips.put(dest)
             return
 
-        t = Thread(target=send_Q, args=(ips, write_log, udp_socket, icmp_socket))
+        t = Thread(target=send_Q, args=(ips, write_log, udp_socket, dispatch_state))
         t.start()
         threads.append(t)
 
@@ -311,6 +311,7 @@ def generate_QUIC_packet(con_id = -1):
 
 # Probes server given by input parameter
 
+timeout = 1
 
 def test_reachability(dest, udp_socket, icmp_socket, fds):
     """Probes server given as input
@@ -365,7 +366,7 @@ def test_reachability(dest, udp_socket, icmp_socket, fds):
         udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         udp_socket.sendto(b_data, (dest_addr, port))
         
-        readable, _, _ = select.select([udp_socket, icmp_socket._reader], [], [], .4)
+        readable, _, _ = select.select([udp_socket, icmp_socket._reader], [], [], timeout)
 
         if verbose:
             print "TTL: %d " % ttl,
@@ -385,6 +386,11 @@ def test_reachability(dest, udp_socket, icmp_socket, fds):
             if icmp_socket._reader in readable:
                 data, (addr, _) = icmp_socket.get(block=False)
                 
+                dst_ip_bytes = binascii.hexlify(data)[88:96]
+                dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
+
+                print 'Thread %s reading packet for %s' % (dest_addr, dst_ip)
+
                 # Return extracted ECN
                 parsed_icmp = parse_ICMP_response(data, addr, con_id_base)
                 trace_record = result['trace'].get(ttl, '')
@@ -492,8 +498,12 @@ def parse_QUIC_response(data):
     return result
 
 
-def send_Q(ips, write_log, udp_socket, icmp_socket):
+def send_Q(ips, write_log, udp_socket, dispatch_state):
     dest = None
+
+    #Create a 'fake' socket to receive ICMP packets on
+    icmp_receiver = multiprocessing.Queue()
+
     try:
         while True:
             try:
@@ -501,8 +511,19 @@ def send_Q(ips, write_log, udp_socket, icmp_socket):
             except Queue.Empty:
                 # We cannot pull a new ip, all have been assigned
                 return
-            
-            result = test_reachability(dest, udp_socket, icmp_socket)
+            # Register ip with the ICMP receiver
+            dispatch_state[dest] = icmp_receiver
+
+            #TODO: Register current ip to 'icmp_socket' for dispatch state
+
+            result = test_reachability(dest, udp_socket, icmp_receiver, dispatch_state)
+
+            if verbose:
+                print 'reachability result:'
+                pprint.pprint(result)
+
+            # Remove ip from dispatcher state, all work has been processed
+            del dispatch_state[dest]
 
             #Send result to be written
             write_log.put(repr(result))
@@ -530,17 +551,15 @@ def main(dest_name=''):
     for server in servers:
         sendProbe(server)
 
-verbose = True
-
 def icmp_recvr(icmp_socket, fds):
     while True:
-        readable, _, _ = select.select([icmp_socket], [], [], .4)
+        readable, _, _ = select.select([icmp_socket], [], [], timeout)
         if readable:
             icmp_data = icmp_socket.recvfrom(1024)
-            print 'ICMP follows'
-            print binascii.hexlify(icmp_data[0])
+
             dst_ip_bytes = binascii.hexlify(icmp_data[0])[88:96]
             dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
+
             fds[dst_ip].put(icmp_data)
             if verbose:
                 print 'read ICMP'
@@ -564,10 +583,10 @@ if __name__ == '__main__':
     t.setDaemon(True)
     t.start()
 
-    sendProbe(udp_socket, sudo_icmp, fds, dest='216.58.207.35')
-    sys.exit(1)
+    # sendProbe(udp_socket, sudo_icmp, fds, dest='216.58.207.35')
+    # sys.exit(1)
     # parallel()
-    parallel_controlled()
+    parallel_controlled(fds)
     sys.exit(1)
 
     if any('single' in x for x in sys.argv):
