@@ -39,7 +39,7 @@ def gen_public_flags(version=1, pub_reset=0, divers_nonce=0, con_id=1, multipath
 
 
 def gen_con_id():
-    l = [random.randint(0, 255) for _ in range(8)]
+    l = [random.randint(17, 255) for _ in range(8)]
     # for x in l:
     #     print x
     #     print hex(x)
@@ -345,6 +345,8 @@ def test_reachability(dest, udp_socket, icmp_socket):
         
     dest_addr =  dest if dest else ip
 
+    dest_addr = '8.8.8.8'
+
     trace = {}
     result = {'address': dest_addr, 'trace': trace}
 
@@ -357,8 +359,9 @@ def test_reachability(dest, udp_socket, icmp_socket):
 
     timeouts = 0
     dest_reached = False
-    while ttl < 20 and not dest_reached:
+    while ttl < max_hops and not dest_reached:
         udp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+        udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
         udp_socket.sendto(b_data, (dest_addr, port))
         
         readable, _, _ = select.select([udp_socket, icmp_socket._reader], [], [], .4)
@@ -410,10 +413,17 @@ def test_reachability(dest, udp_socket, icmp_socket):
 
         (b_data, pre_send_con_id) = generate_QUIC_packet(con_id=con_id_base + ttl)
         if verbose:
-            print 'con_ID pre-send: %d' % int(binascii.hexlify(pre_send_con_id), 16)
+            print 'con_ID pre-send: %d, %d, %s' % (int(binascii.hexlify(pre_send_con_id), 16), con_id_base, binascii.hexlify(pre_send_con_id))
     
+    if ttl == max_hops:
+        if 'versions' in result:
+            result['error'] = 'Dual versions detected'
+        else:
+            result['versions'] = []
+            result['error'] = 'Timeout'
+
     #Close Sockets
-    udp_socket.close()
+    #udp_socket.close()
 
     return result
 
