@@ -141,13 +141,13 @@ fraction = int(target / 20)
 progress = 0
 percent = 0
 
-def sendProbe(udp_socket, icmp_socket, dest=''):
+def sendProbe(udp_socket, icmp_socket, fds, dest=''):
     # addr = 216.58.207.35
     # port = 443
     # SNI: google.com
 
     # try:
-    result = test_reachability(dest, udp_socket, icmp_socket)
+    result = test_reachability(dest, udp_socket, icmp_socket, fds)
 
     if verbose:
         print 'reachability result:'
@@ -312,7 +312,7 @@ def generate_QUIC_packet(con_id = -1):
 # Probes server given by input parameter
 
 
-def test_reachability(dest, udp_socket, icmp_socket):
+def test_reachability(dest, udp_socket, icmp_socket, fds):
     """Probes server given as input
     
     Arguments:
@@ -345,7 +345,8 @@ def test_reachability(dest, udp_socket, icmp_socket):
         
     dest_addr =  dest if dest else ip
 
-    dest_addr = '8.8.8.8'
+    fds[dest_addr] = icmp_socket
+    # dest_addr = '8.8.8.8'
 
     trace = {}
     result = {'address': dest_addr, 'trace': trace}
@@ -531,14 +532,18 @@ def main(dest_name=''):
 
 verbose = True
 
-def icmp_recvr(icmp_socket, fd):
+def icmp_recvr(icmp_socket, fds):
     while True:
         readable, _, _ = select.select([icmp_socket], [], [], .4)
         if readable:
             icmp_data = icmp_socket.recvfrom(1024)
-            fd.put(icmp_data)
+            print 'ICMP follows'
+            print binascii.hexlify(icmp_data[0])
+            dst_ip_bytes = binascii.hexlify(icmp_data[0])[88:96]
+            dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
+            fds[dst_ip].put(icmp_data)
             if verbose:
-                print 'read stuff'
+                print 'read ICMP'
 
 if __name__ == '__main__':
 
@@ -554,11 +559,12 @@ if __name__ == '__main__':
         ips.put(dest)
 
     sudo_icmp = multiprocessing.Queue()
-    t = Thread(target=icmp_recvr, args=(icmp_socket, sudo_icmp))
+    fds = {}
+    t = Thread(target=icmp_recvr, args=(icmp_socket, fds))
     t.setDaemon(True)
     t.start()
 
-    sendProbe(udp_socket, sudo_icmp, dest='216.58.207.35')
+    sendProbe(udp_socket, sudo_icmp, fds, dest='216.58.207.35')
     sys.exit(1)
     # parallel()
     parallel_controlled()
