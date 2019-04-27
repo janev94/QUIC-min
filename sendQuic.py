@@ -251,7 +251,7 @@ def parallel_controlled(dispatch_state, num_threads=20):
 
     #DEBUG
     min_ips = Queue.Queue()
-    for _ in range(1):
+    for _ in range(22):
         min_ips.put(ips.get())
 
     ips = min_ips
@@ -405,8 +405,6 @@ def test_reachability(dest, udp_sockets, icmp_socket, fds):
 
             if icmp_socket._reader in readable:
                 data, (addr, _) = icmp_socket.get(block=False)
-                port = struct.unpack('!H', data[48:50])[0] # bits 48 and 49 correspond to sender port number
-                print "port %d" % port
                 # sys.exit(1)
                 dst_ip_bytes = binascii.hexlify(data)[88:96]
                 dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
@@ -462,8 +460,6 @@ NO_CON_ID = 1
 def parse_ICMP_response(recv_data, curr_addr, base_con_id):
     result = ""
 
-    print "RD %s" % type(recv_data)
-
     # Split the header and the data
     if verbose:
         print 'ICMP DATA: %s' % binascii.hexlify(recv_data)
@@ -500,9 +496,13 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
             print "ICMP payload too short, cannot extract conn_id %d" % NO_CON_ID
         NO_CON_ID += 1
 
+    port = struct.unpack('!H', recv_data[48:50])[0] # bits 48 and 49 correspond to sender port number
+
     result = "%s, ECN: %d" % (curr_addr, ecn)
     if extracted_ttl:
         result += " Extracted TTL: %d" % extracted_ttl
+
+    result += " Extracted TTL from port %d" % (port - 6030) # base port
 
     return result
 
