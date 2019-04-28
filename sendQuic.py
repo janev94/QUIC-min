@@ -133,7 +133,7 @@ def decode_versions(hex_str):
     return versions
 
 
-verbose = False
+verbose = True
 
 target = 1182952
 
@@ -222,6 +222,8 @@ def parallel():
 from threading import Thread, Event
 import Queue
 
+BASE_PORT = 6060
+
 def parallel_controlled(dispatch_state, num_threads=20):
     write_log = Queue.Queue()
 
@@ -233,7 +235,7 @@ def parallel_controlled(dispatch_state, num_threads=20):
     # Create sockets for each TTL <-> port mapping
 
     udp_sockets = []
-    base_port = 6030
+    base_port = BASE_PORT
     for i in range(20):
         try:
             udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -280,7 +282,9 @@ def parallel_controlled(dispatch_state, num_threads=20):
 
     for t in threads:
         t.join()
-    
+
+    print 'All workers finished'    
+
     #print 'setting stop'
     stopWriting.set()
     writer.join()
@@ -502,7 +506,7 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
     if extracted_ttl:
         result += " Extracted TTL: %d" % extracted_ttl
 
-    result += " Extracted TTL from port %d" % (port - 6030) # base port
+    result += " Extracted TTL from port %d" % (port - BASE_PORT) # base port
 
     return result
 
@@ -535,6 +539,7 @@ def send_Q(ips, write_log, udp_sockets, dispatch_state):
                 dest = ips.get_nowait()
             except Queue.Empty:
                 # We cannot pull a new ip, all have been assigned
+                print 'Thread finished %d ' % threading.current_thread().ident
                 return
             # Register ip with the ICMP receiver
             dispatch_state[dest] = icmp_receiver
@@ -585,7 +590,15 @@ def icmp_recvr(icmp_socket, fds):
             dst_ip_bytes = binascii.hexlify(icmp_data[0])[88:96]
             dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
 
-            fds[dst_ip].put(icmp_data)
+            try:
+                fds[dst_ip].put(icmp_data)
+            except KeyError as e:
+                # we've received a reply for a thread that is no longer operated on
+                print 'key error'                
+                print fds.keys()
+                print dst_ip
+
+
             if verbose:
                 print 'read ICMP'
 
