@@ -133,7 +133,7 @@ def decode_versions(hex_str):
     return versions
 
 
-verbose = True
+verbose = False
 
 target = 1182952
 
@@ -222,7 +222,11 @@ def parallel():
 from threading import Thread, Event
 import Queue
 
-BASE_PORT = 6060
+BASE_PORT = 6030
+
+import threading
+counter_lock = threading.Lock()
+counter = 0
 
 def parallel_controlled(dispatch_state, num_threads=20):
     write_log = Queue.Queue()
@@ -239,21 +243,27 @@ def parallel_controlled(dispatch_state, num_threads=20):
     for i in range(20):
         try:
             udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            
+            udp_socket.setblocking(0)
+
             try:
                 udp_socket.bind(('', base_port + i + 1))
             except socket.error as e:
                 if e.errno == 98:
                     # Handle case where port is taken
-                    print "Port %d is taken" % base_port + i + 1
+                    print "Port %d is taken" % (base_port + i + 1)
 
             udp_sockets.append(udp_socket)
         except Exception as e:
+            print repr(e)
             print 'could not create socket series'
+
+    t = Thread(target=vn_recvr, args=(udp_sockets, dispatch_state))
+    t.setDaemon(True)
+    t.start()
 
     #DEBUG
     min_ips = Queue.Queue()
-    for _ in range(22):
+    for _ in range(100):
         min_ips.put(ips.get())
 
     ips = min_ips
@@ -281,9 +291,9 @@ def parallel_controlled(dispatch_state, num_threads=20):
     writer.start()
 
     for t in threads:
-        t.join()
+       t.join()
 
-    print 'All workers finished'    
+    print 'All workers finished'
 
     #print 'setting stop'
     stopWriting.set()
@@ -336,7 +346,7 @@ def generate_QUIC_packet(con_id = -1):
 
 timeout = .4
 
-def test_reachability(dest, udp_sockets, icmp_socket, fds):
+def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
     """Probes server given as input
     
     Arguments:
@@ -369,7 +379,7 @@ def test_reachability(dest, udp_sockets, icmp_socket, fds):
         
     dest_addr =  dest if dest else ip
 
-    fds[dest_addr] = icmp_socket
+    fds[dest_addr] = (icmp_socket, quic_socket)
     # dest_addr = '8.8.8.8'
 
     trace = {}
@@ -388,17 +398,28 @@ def test_reachability(dest, udp_sockets, icmp_socket, fds):
         udp_socket = udp_sockets[ttl-1]
         udp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
         udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
+
         udp_socket.sendto(b_data, (dest_addr, port))
-        
-        readable, _, _ = select.select([udp_socket, icmp_socket._reader], [], [], timeout)
+
+        readable, _, s_errs = select.select([quic_socket._reader, icmp_socket._reader], [], [], .4)
 
         if verbose:
             print "TTL: %d " % ttl,
       #  print '%d udp recvd: %s ICMP recvd: %s' % (len(readable), send_socket in readable, recv_socket in readable)
         
+
         if readable:
-            if udp_socket in readable:
-                data, (addr, _) = udp_socket.recvfrom(1024)
+            if quic_socket._reader in readable:
+                with open('debug', 'a+') as f:
+                    f.write('reading QUIC response for %s %d\n' % (dest_addr, ttl))
+                try:
+                    data, (addr, _) = quic_socket.get(block=False)
+                except:
+                    print 'error'
+                #readable, _, _ = select.select([udp_socket], [], [], 0)
+                #print len(readable)
+                with open('debug', 'a+') as f:
+                    f.write('done reading QUIC response for %s %s\n' % (dest_addr, addr) )
                 
                 # Get a list of supported versions
                 parsed_quic = parse_QUIC_response(data)
@@ -446,7 +467,7 @@ def test_reachability(dest, udp_sockets, icmp_socket, fds):
         (b_data, pre_send_con_id) = generate_QUIC_packet(con_id=con_id_base + ttl)
         if verbose:
             print 'con_ID pre-send: %d, %d, %s' % (int(binascii.hexlify(pre_send_con_id), 16), con_id_base, binascii.hexlify(pre_send_con_id))
-    
+
     if ttl == max_hops:
         if 'versions' in result:
             result['error'] = 'Dual versions detected'
@@ -532,21 +553,31 @@ def send_Q(ips, write_log, udp_sockets, dispatch_state):
 
     #Create a 'fake' socket to receive ICMP packets on
     icmp_receiver = multiprocessing.Queue()
+    quic_receiver = multiprocessing.Queue()
 
     try:
         while True:
             try:
+                if verbose:
+                    print 'QSIZE: %d' % ips.qsize()
                 dest = ips.get_nowait()
+                if verbose:
+                    print 'Got %s' % dest
             except Queue.Empty:
                 # We cannot pull a new ip, all have been assigned
-                print 'Thread finished %d ' % threading.current_thread().ident
-                return
+                    if verbose:
+                        print 'Thread finished %d ' % threading.current_thread().ident
+                    return
             # Register ip with the ICMP receiver
-            dispatch_state[dest] = icmp_receiver
+            dispatch_state[dest] = (icmp_receiver, quic_receiver)
 
             #TODO: Register current ip to 'icmp_socket' for dispatch state
 
-            result = test_reachability(dest, udp_sockets, icmp_receiver, dispatch_state)
+            if verbose:
+                print 'processing %s' % dest
+            result = test_reachability(dest, udp_sockets, icmp_receiver, quic_receiver, dispatch_state)
+            if verbose:
+                print 'Done %s' % dest
 
             if verbose:
                 print 'reachability result:'
@@ -555,10 +586,15 @@ def send_Q(ips, write_log, udp_sockets, dispatch_state):
             # Remove ip from dispatcher state, all work has been processed
             del dispatch_state[dest]
 
+            if verbose:
+                print 'sending to logger'
+
             #Send result to be written
             write_log.put(repr(result))
             #print write_log.qsize()
     except Exception as e:
+        if verbose:
+            print repr(e)
         # print type(e)
         #Anything that we could not detect, save to a file so we can debug later and not crash the script
         if not dest:
@@ -591,16 +627,34 @@ def icmp_recvr(icmp_socket, fds):
             dst_ip = '.'.join(str(int(dst_ip_bytes[x:x+2], 16)) for x in range(0, len(dst_ip_bytes), 2) )
 
             try:
-                fds[dst_ip].put(icmp_data)
+                if dst_ip not in fds:
+                    # this is a stale record, just ignore it
+                    continue
+                fds[dst_ip][0].put(icmp_data)
             except KeyError as e:
                 # we've received a reply for a thread that is no longer operated on
                 print 'key error'                
                 print fds.keys()
                 print dst_ip
 
-
             if verbose:
                 print 'read ICMP'
+
+def vn_recvr(udp_sockets, fds):
+    while True:
+        readable, _, _ = select.select(udp_sockets, [], [])
+        if readable:
+            for socket in udp_sockets:
+                if socket in readable:
+                    print 'read QUIC VN'
+                    try:
+                        data = socket.recvfrom(1024)
+                        addr = data[1][0]
+                        fds[addr][1].put(data)
+                    except:
+                        #TODO: decide how to handle this case
+                        print '++++++++++++++++++error late QUIC received for %s ' % addr
+
 
 if __name__ == '__main__':
 
