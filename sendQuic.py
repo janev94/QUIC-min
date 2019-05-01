@@ -8,13 +8,14 @@ import os
 import pprint
 import select
 import multiprocessing
+import threading
 
 from quicPacket import QuicPacket
 
 
 icmp = socket.getprotobyname('icmp')
 udp = socket.getprotobyname('udp')
-
+BASE_PORT = 6030
 
 
 
@@ -25,6 +26,8 @@ target = 1182952
 fraction = int(target / 20)
 progress = 0
 percent = 0
+
+timeout = .4
 
 def sendProbe(udp_socket, icmp_socket, fds, dest=''):
     # addr = 216.58.207.35
@@ -107,9 +110,8 @@ def parallel():
 from threading import Thread, Event
 import Queue
 
-BASE_PORT = 6030
 
-import threading
+
 counter_lock = threading.Lock()
 counter = 0
 
@@ -231,7 +233,7 @@ def generate_QUIC_packet(con_id = -1):
 
 # Probes server given by input parameter
 
-timeout = .4
+
 
 def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
     """Probes server given as input
@@ -457,8 +459,6 @@ def send_Q(ips, write_log, udp_sockets, dispatch_state):
                     return
             # Register ip with the ICMP receiver
             dispatch_state[dest] = (icmp_receiver, quic_receiver)
-
-            #TODO: Register current ip to 'icmp_socket' for dispatch state
 
             if verbose:
                 print 'processing %s' % dest
