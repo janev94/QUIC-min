@@ -3,12 +3,12 @@ import struct
 import sys
 import random
 import binascii
-import sys
 import os
 import pprint
 import select
 import multiprocessing
 import threading
+import time
 
 from quicPacket import QuicPacket
 
@@ -284,6 +284,7 @@ def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
     timeouts = 0
     dest_reached = False
     while ttl < max_hops and not dest_reached:
+        pre_send_time = time.time()
         udp_socket = udp_sockets[ttl-1]
         udp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
         udp_socket.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, 1)
@@ -356,6 +357,10 @@ def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
         (b_data, pre_send_con_id) = generate_QUIC_packet(con_id=con_id_base + ttl)
         if verbose:
             print 'con_ID pre-send: %d, %d, %s' % (int(binascii.hexlify(pre_send_con_id), 16), con_id_base, binascii.hexlify(pre_send_con_id))
+        sleep_time = 1 / 4.0 - (time.time() - pre_send_time)
+        # send at most 4 packets from one thread every one second
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
     if ttl == max_hops:
         if 'versions' in result:
@@ -564,7 +569,7 @@ if __name__ == '__main__':
     # sendProbe(udp_socket, sudo_icmp, fds, dest='216.58.207.35')
     # sys.exit(1)
     # parallel()
-    parallel_controlled(fds, 5)
+    parallel_controlled(fds, 10)
     sys.exit(1)
 
     if any('single' in x for x in sys.argv):
