@@ -150,7 +150,7 @@ def parallel_controlled(dispatch_state, num_threads=20):
 
     #DEBUG
     global target
-    target = 1000
+    target = 500
     min_ips = Queue.Queue()
     for _ in range(target):
        min_ips.put(ips.get())
@@ -291,7 +291,7 @@ def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
 
         udp_socket.sendto(b_data, (dest_addr, port))
 
-        readable, _, s_errs = select.select([quic_socket._reader, icmp_socket._reader], [], [], .4)
+        readable, _, _ = select.select([quic_socket._reader, icmp_socket._reader], [], [], .4)
 
         if verbose:
             print "TTL: %d " % ttl,
@@ -546,6 +546,7 @@ def vn_recvr(udp_sockets, fds):
                     except:
                         #TODO: decide how to handle this case
                         print '++++++++++++++++++error late QUIC received for %s ' % addr
+
 
 
 if __name__ == '__main__':
