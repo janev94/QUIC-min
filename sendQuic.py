@@ -560,15 +560,11 @@ if __name__ == '__main__':
         send_Q(ips, write_log)
         ips.put(dest)
 
-    sudo_icmp = multiprocessing.Queue()
     fds = {}
     t = Thread(target=icmp_recvr, args=(icmp_socket, fds))
     t.setDaemon(True)
     t.start()
 
-    # sendProbe(udp_socket, sudo_icmp, fds, dest='216.58.207.35')
-    # sys.exit(1)
-    # parallel()
     parallel_controlled(fds, 10)
     sys.exit(1)
 
