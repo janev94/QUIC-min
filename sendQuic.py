@@ -150,7 +150,7 @@ def parallel_controlled(dispatch_state, num_threads=20):
 
     #DEBUG
     global target
-    target = 500
+    target = 100
     min_ips = Queue.Queue()
     for _ in range(target):
        min_ips.put(ips.get())
@@ -329,8 +329,8 @@ def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
 
                 # Return extracted ECN
                 parsed_icmp = parse_ICMP_response(data, addr, con_id_base)
-                trace_record = result['trace'].get(ttl, '')
-                trace_record += parsed_icmp
+                trace_record = result['trace'].get(ttl, [])
+                trace_record += [parsed_icmp]
                 result['trace'][ttl] = trace_record
                 if verbose:
                     print 'reading ICMP socket %s' % repr(parsed_icmp)
@@ -343,8 +343,8 @@ def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
             if verbose:
                 print 'TO ',
             # Record timeout in trace    
-            ttl_record = result['trace'].get(ttl, '')
-            ttl_record += '* '
+            ttl_record = result['trace'].get(ttl, [])
+            ttl_record += [{}]
 
             result['trace'][ttl] = ttl_record
             timeouts += 1
@@ -377,7 +377,7 @@ def test_reachability(dest, udp_sockets, icmp_socket, quic_socket, fds):
 NO_CON_ID = 1
 
 def parse_ICMP_response(recv_data, curr_addr, base_con_id):
-    result = ""
+    result = {}
 
     # Split the header and the data
     if verbose:
@@ -417,11 +417,14 @@ def parse_ICMP_response(recv_data, curr_addr, base_con_id):
 
     port = struct.unpack('!H', recv_data[48:50])[0] # bits 48 and 49 correspond to sender port number
 
-    result = "%s, ECN: %d" % (curr_addr, ecn)
+    result['ECN'] = ecn #"%s, ECN: %d" % (curr_addr, ecn)
+    result['ADDR'] = curr_addr
     if extracted_ttl:
-        result += " Extracted TTL: %d" % extracted_ttl
+        #result += " Extracted TTL: %d" % extracted_ttl
+        result['TTL_CID'] = extracted_ttl
 
-    result += " Extracted TTL from port %d" % (port - BASE_PORT) # base port
+    #result += " Extracted TTL from port %d" % (port - BASE_PORT) # base port
+    result['TTL_PORT'] = port - BASE_PORT
 
     return result
 

@@ -13,25 +13,23 @@ for tarinfo in tar:
         # print type(tar.extractfile(tarinfo.name))
         with closing(tar.extractfile(tarinfo.name)) as f:
             linec = 0
-            for line in f:
+            for line in f:  
                 res = eval(line)
                 trace = res['trace']
 
                 #sanatise input
-                for _, hop in trace.items():
-                    hop = hop.replace('* ', '')
-                    hop = hop.replace('Extracted TTL from port', '')
-                    #check if there are any records left
-                    if ',' in hop:
-                        addr = hop.split(',')[0]
+                for _, hop_list in trace.items():
+                    for hop in hop_list:
+                        if hop == {}:
+                            continue
+                        addr = hop['ADDR']
                         val = routers.get(addr, set())
-                        val.add('Extracted TTL' in hop)
+                        val.add('TTL_CID' in hop)
                         routers[addr] = val
 
-
                 linec += 1
-                if linec == 10:
-                    break
+                if linec % 10000 == 0:
+                    print linec / 10000
         print 'found one'
         break
 
